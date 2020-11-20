@@ -1,0 +1,13 @@
+[package]
+name = "datastore_entity"
+version = "0.0.1"
+authors = ["Andreas Pålsson <a.palsson@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+google-datastore1 = "*"
+syn = "1.0"
+quote = "1.0"
+
+[lib]
+proc-macro = true
