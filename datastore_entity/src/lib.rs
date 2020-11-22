@@ -1,114 +1,127 @@
-// Based on this blog post
-// https://cprimozic.net/blog/writing-a-hashmap-to-struct-procedural-macro-in-rust/
-#![recursion_limit = "128"]
+use gcp_auth::Token;
+use std::collections::BTreeMap;
+use google_datastore1::schemas::Value;
+use std::ops::Deref;
+use std::fmt::{Display, Formatter};
 
-extern crate google_datastore1 as datastore1;
-extern crate proc_macro;
-extern crate syn;
-#[macro_use]
-extern crate quote;
+pub use datastore_entity_macro::{DatastoreEntity};
 
-use proc_macro::TokenStream;
-use syn::{DeriveInput, Expr};
+/// This trait must be manually implemented on any struct that derives DatastoreEntity.
+pub trait DatastoreEntity {
+    /// TODO: Implement as attribute on struct instead
+    fn kind(&self) -> &'static str;
+}
 
-#[proc_macro_derive(DatastoreEntity)]
-pub fn datastore_entity(input: TokenStream) -> TokenStream {
-    // Parse the string representation into a syntax tree
-    let ast = syn::parse_macro_input!(input as DeriveInput);
+pub trait FetchToken {
+    fn fetch_token() -> Token;
+}
 
-    // create a vector containing the names of all fields on the struct
-    let (idents, values) = match ast.data {
-        syn::Data::Struct(vdata) => {
-            let mut idents = Vec::new();
-            let mut values = Vec::new();
+pub enum DatastoreParseError {
+    NoSuchValue,
+}
 
-            for ref field in vdata.fields.iter() {
-                match &field.ty {
-                    syn::Type::Path(p) => {
-                        match p.path.segments.first().unwrap().ident.to_string().as_str() {
-                            "String" => {
-                                idents.push(field.ident.clone().unwrap());
-                                let expr = match syn::parse_str::<Expr>("parse_string(occ_ent)") {
-                                    Ok(v) => v,
-                                    Err(_) => panic!("failed to parse expression"),
-                                };
-                                values.push(expr);
-                            },
-                            "i32" => {
-                                idents.push(field.ident.clone().unwrap());
-                                let expr = match syn::parse_str::<Expr>("parse_u32(occ_ent)") {
-                                    Ok(v) => v,
-                                    Err(_) => panic!("failed to parse expression"),
-                                };
-                                values.push(expr);
-                            },
-                            "bool" => {
-                                idents.push(field.ident.clone().unwrap());
-                                let expr = match syn::parse_str::<Expr>("parse_bool(occ_ent)") {
-                                    Ok(v) => v,
-                                    Err(_) => panic!("failed to parse expression"),
-                                };
-                                values.push(expr);
-                            },
-                            _ => (), // Ignore
-                        }
-                    },
-                    _ => (), // Ignore
-                }
-            }
-            (idents, values)
-        },
-        syn::Data::Enum(_) => panic!("You can only derive this on structs!"),
-        syn::Data::Union(_) => panic!("You can only derive this on structs!"),
-    };
+#[derive(Debug)]
+pub struct DatastoreProperties(BTreeMap::<String, Value>);
 
-    // contains quoted strings containing the struct fields in the same order as
-    // the vector of idents.
-    let mut keys = Vec::new();
-    for ident in idents.iter() {
-        keys.push(ident.to_string());
+impl Display for DatastoreProperties {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self.0)
+    }
+}
+
+impl DatastoreProperties {
+    pub fn new() -> DatastoreProperties {
+        DatastoreProperties(BTreeMap::<String, Value>::new())
     }
 
-    let name = &ast.ident;
-
-    let tokens = quote! {
-        fn parse_string(v: &datastore1::Value) -> String {
-            // TODO - handle errors
-            v.string_value.as_ref().unwrap().to_string()
+    pub fn get_string(&mut self, key: &str) -> Result<String, DatastoreParseError> {
+        match self.0.remove(key) {
+            Some(value) => value.string_value.ok_or_else(|| DatastoreParseError::NoSuchValue),
+            None => Err(DatastoreParseError::NoSuchValue),
         }
+    }
 
-        fn parse_u32(v: &datastore1::Value) -> i32 {
-            // TODO - handle errors
-            v.integer_value.as_ref().unwrap().parse::<i32>().unwrap()
+    pub fn set_opt_string(&mut self, key: &str, value: Option<String>) {
+        let mut datastore_value = DatastoreValue::default();
+        if let Some(value) = value {
+            datastore_value.string(value.to_string());
+            self.0.insert(key.to_string(), datastore_value.0);
         }
+    }
 
-        fn parse_bool(v: &datastore1::Value) -> bool {
-            // TODO - handle errors
-            v.boolean_value.unwrap()
+    pub fn set_string(&mut self, key: &str, value: String) {
+        let mut datastore_value = DatastoreValue::default();
+        datastore_value.string(value);
+        self.0.insert(key.to_string(), datastore_value.0);
+    }
+
+    pub fn get_integer(&mut self, key: &str) -> Result<i64, DatastoreParseError> {
+        match self.0.remove(key) {
+            Some(value) => value.integer_value.ok_or_else(|| DatastoreParseError::NoSuchValue),
+            None => Err(DatastoreParseError::NoSuchValue),
         }
+    }
 
-        impl DatastoreEntity<#name> for #name {
-            fn from_result_map(hm: &std::collections::HashMap<String, datastore1::Value>) -> #name {
-                // start with the default implementation
-                let mut settings = #name::default();
-                
-                #(                    
-                    match hm.get(#keys) {
-                        Some(occ_ent) => {
-                            // set the corresponding struct field to the value in
-                            // the corresponding hashmap if it contains it
-                            settings.#idents = #values
-                        },
-                        None => (),
-                    }
-                    
-                )*
+    pub fn set_integer(&mut self, key: &str, value: i64) {
+        let mut datastore_value = DatastoreValue::default();
+        datastore_value.integer(value);
+        self.0.insert(key.to_string(), datastore_value.0);
+    }
 
-                // return the modified struct
-                settings
-            }
+    pub fn get_bool(&mut self, key: &str) -> Result<bool, DatastoreParseError> {
+        match self.0.remove(key) {
+            Some(value) => value.boolean_value.ok_or_else(|| DatastoreParseError::NoSuchValue),
+            None => Err(DatastoreParseError::NoSuchValue),
         }
-    };
+    }
 
-    TokenStream::from(tokens)
+    pub fn set_bool(&mut self, key: &str, value: bool) {
+        let mut datastore_value = DatastoreValue::default();
+        datastore_value.boolean(value);
+        self.0.insert(key.to_string(), datastore_value.0);
+    }
+}
+
+pub struct DatastoreValue(pub Value);
+
+impl Default for DatastoreValue {
+    fn default() -> Self {
+        DatastoreValue(Value {
+            array_value: None,
+            blob_value: None,
+            boolean_value: None,
+            double_value: None,
+            entity_value: None,
+            exclude_from_indexes: None,
+            geo_point_value: None,
+            integer_value: None,
+            key_value: None,
+            meaning: None,
+            null_value: None,
+            string_value: None,
+            timestamp_value: None,
+        })
+    }
+}
+
+impl DatastoreValue {
+    pub fn string(&mut self, s: String) {
+        self.0.string_value = Some(s);
+    }
+
+    pub fn integer(&mut self, i: i64) {
+        self.0.integer_value = Some(i);
+    }
+
+    pub fn boolean(&mut self, b: bool) {
+        self.0.boolean_value = Some(b);
+    }
+}
+
+impl Deref for DatastoreValue {
+    type Target = Value;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
