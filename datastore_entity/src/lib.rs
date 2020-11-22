@@ -16,6 +16,7 @@ pub trait FetchToken {
     fn fetch_token() -> Token;
 }
 
+#[derive(Debug)]
 pub enum DatastoreParseError {
     NoSuchValue,
 }
