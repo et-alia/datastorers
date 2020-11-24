@@ -1,5 +1,7 @@
 
-use datastore_entity::{DatastoreEntity};
+use datastore_entity::{DatastoreEntity, DatastoreProperties};
+use std::convert::TryInto;
+use std::convert::From;
 
 #[derive(DatastoreEntity, Debug)]
 pub struct Thing {
@@ -20,9 +22,11 @@ pub fn main() {
         prop_integer: 777,
         prop_boolean: false,
     };
-    let mut props = thing.into_properties();
+    let props: DatastoreProperties = thing.into();
+    // OR: let props = DatastoreProperties::from(thing);
     println!("{}", props);
-    let thing2 = Thing::from_properties(&mut props).ok().unwrap();
+    let thing2: Thing = props.try_into().unwrap();
+    // OR: let thing2 = Thing::try_from(props).unwrap();
     println!("{:#?}", thing2);
     println!("{}", thing2.kind());
 }

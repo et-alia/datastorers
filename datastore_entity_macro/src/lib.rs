@@ -34,7 +34,7 @@ pub fn datastore_entity(input: TokenStream) -> TokenStream {
                                 let ident = field.ident.as_ref().unwrap().clone();
                                 let key = ident.to_string();
                                 let into_property_expr_string = format!("properties.get_string(\"{}\")", key);
-                                let from_property_expr_string = format!("properties.set_string(\"{}\", self.{})", key, key);
+                                let from_property_expr_string = format!("properties.set_string(\"{}\", entity.{})", key, key);
                                 field_metas.push(FieldMeta {
                                     ident,
                                     into_property: parse_expr(&into_property_expr_string),
@@ -45,7 +45,7 @@ pub fn datastore_entity(input: TokenStream) -> TokenStream {
                                 let ident = field.ident.as_ref().unwrap().clone();
                                 let key = ident.to_string();
                                 let into_property_expr_string = format!("properties.get_integer(\"{}\")", key);
-                                let from_property_expr_string = format!("properties.set_integer(\"{}\", self.{})", key, key);
+                                let from_property_expr_string = format!("properties.set_integer(\"{}\", entity.{})", key, key);
                                 field_metas.push(FieldMeta {
                                     ident,
                                     into_property: parse_expr(&into_property_expr_string),
@@ -56,7 +56,7 @@ pub fn datastore_entity(input: TokenStream) -> TokenStream {
                                 let ident = field.ident.as_ref().unwrap().clone();
                                 let key = ident.to_string();
                                 let into_property_expr_string = format!("properties.get_bool(\"{}\")", key);
-                                let from_property_expr_string = format!("properties.set_bool(\"{}\", self.{})", key, key);
+                                let from_property_expr_string = format!("properties.set_bool(\"{}\", entity.{})", key, key);
                                 field_metas.push(FieldMeta {
                                     ident,
                                     into_property: parse_expr(&into_property_expr_string),
@@ -81,8 +81,21 @@ pub fn datastore_entity(input: TokenStream) -> TokenStream {
     let from_properties = fields.iter().map(|f| f.from_property.clone()).collect::<Vec<_>>();
 
     let tokens = quote! {
-        impl #name where #name: DatastoreEntity {
-            pub fn from_properties(properties: &mut datastore_entity::DatastoreProperties) -> Result<#name, datastore_entity::DatastoreParseError> {
+        /// Force DatastoreEntity to be implemented
+        impl #name where #name: DatastoreEntity {}
+
+        impl core::convert::TryFrom<datastore_entity::DatastoreProperties> for #name {
+            type Error = datastore_entity::DatastoreParseError;
+
+            fn try_from(mut properties: datastore_entity::DatastoreProperties) -> Result<Self, Self::Error> {
+                Self::try_from(&mut properties)
+            }
+        }
+
+        impl core::convert::TryFrom<&mut datastore_entity::DatastoreProperties> for #name {
+            type Error = datastore_entity::DatastoreParseError;
+
+            fn try_from(properties: &mut datastore_entity::DatastoreProperties) -> Result<Self, Self::Error> {
                 Ok(
                     #name {
                         #(
@@ -91,8 +104,10 @@ pub fn datastore_entity(input: TokenStream) -> TokenStream {
                     }
                 )
             }
+        }
 
-            pub fn into_properties(self) -> datastore_entity::DatastoreProperties {
+        impl core::convert::From<#name> for datastore_entity::DatastoreProperties {
+            fn from(entity: #name) -> Self {
                 let mut properties = datastore_entity::DatastoreProperties::new();
                 #(
                     #from_properties;
