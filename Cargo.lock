@@ -146,13 +146,13 @@ dependencies = [
 name = "datastore_entity"
 version = "0.0.1"
 dependencies = [
- "datastore_entity_macro",
+ "datastore_entity_derives",
  "gcp_auth",
  "google-datastore1",
 ]
 
 [[package]]
-name = "datastore_entity_macro"
+name = "datastore_entity_derives"
 version = "0.0.1"
 dependencies = [
  "quote",

@@ -1,11 +1,11 @@
 [package]
-name = "datastore_entity_macro"
+name = "datastore_entity_derives"
 version = "0.0.1"
 authors = ["Andreas Pålsson <a.palsson@gmail.com>", "Erik Zivkovic <erik@zivkovic.se>"]
 edition = "2018"
 
 [dependencies]
-syn = "1.0"
+syn = { version = "1.0", features = ["derive"] }
 quote = "1.0"
 
 [lib]

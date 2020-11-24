@@ -1,15 +1,31 @@
 use gcp_auth::Token;
 use std::collections::BTreeMap;
-use google_datastore1::schemas::Value;
+use google_datastore1::schemas::{Entity, Value, Key};
 use std::ops::Deref;
 use std::fmt::{Display, Formatter};
 
-pub use datastore_entity_macro::{DatastoreEntity};
+pub use datastore_entity_derives::{DatastoreManaged};
 
-/// This trait must be manually implemented on any struct that derives DatastoreEntity.
-pub trait DatastoreEntity {
-    /// TODO: Implement as attribute on struct instead
-    fn kind(&self) -> &'static str;
+#[derive(Debug, Clone)]
+pub struct DatastoreEntity(Entity);
+
+impl DatastoreEntity {
+    pub fn from(key: Option<Key>, properties: DatastoreProperties) -> DatastoreEntity {
+        DatastoreEntity(Entity{
+            key,
+            properties: Some(properties.0),
+        })
+    }
+
+    pub fn key(&self) -> Option<Key> {
+        self.0.key.clone()
+    }
+}
+
+impl Display for DatastoreEntity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self.0)
+    }
 }
 
 pub trait FetchToken {
@@ -19,6 +35,7 @@ pub trait FetchToken {
 #[derive(Debug)]
 pub enum DatastoreParseError {
     NoSuchValue,
+    NoProperties,
 }
 
 #[derive(Debug)]
@@ -33,6 +50,10 @@ impl Display for DatastoreProperties {
 impl DatastoreProperties {
     pub fn new() -> DatastoreProperties {
         DatastoreProperties(BTreeMap::<String, Value>::new())
+    }
+
+    pub fn from(entity: DatastoreEntity) -> Option<DatastoreProperties> {
+        Some(DatastoreProperties(entity.0.properties?))
     }
 
     pub fn get_string(&mut self, key: &str) -> Result<String, DatastoreParseError> {
