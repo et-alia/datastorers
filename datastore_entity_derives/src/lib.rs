@@ -6,10 +6,10 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::{quote};
-use syn::{DeriveInput, Expr};
+use syn::{DeriveInput, Expr, Ident};
 
 struct FieldMeta {
-    ident: syn::Ident,
+    ident: Ident,
     /// When reading from datastore properties and creating a struct,
     /// use this expression.
     into_property: Expr,
@@ -18,15 +18,47 @@ struct FieldMeta {
     from_property: Expr,
 }
 
-#[proc_macro_derive(DatastoreEntity)]
-pub fn datastore_entity(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(DatastoreManaged, attributes(kind, key))]
+pub fn datastore_managed(input: TokenStream) -> TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
+
+    let mut kind: Option<String> = None;
+    let mut key_field: Option<String> = None;
 
     let fields: Vec<FieldMeta> = match ast.data {
         syn::Data::Struct(vdata) => {
             let mut field_metas = Vec::new();
 
+            for ref attr in ast.attrs {
+                match attr.parse_meta().unwrap() {
+                    syn::Meta::NameValue(ref name_value) => {
+                        match name_value.path.get_ident().unwrap().to_string().as_str() {
+                            "kind" => {
+                                if let syn::Lit::Str(lit_str) = name_value.lit.clone() {
+                                    kind = Some(lit_str.value());
+                                }
+                            },
+                            _ => (),
+                        }
+                    },
+                    _ => (),
+                }
+            }
+
             for ref field in vdata.fields.iter() {
+                for ref attr in &field.attrs {
+                    match attr.parse_meta().unwrap() {
+                        syn::Meta::Path(ref path) => {
+                            match path.get_ident().unwrap().to_string().as_str() {
+                                "key" => {
+                                    key_field = Some(field.ident.as_ref().unwrap().clone().to_string());
+                                },
+                                _ => (),
+                            }
+                        },
+                        _ => (),
+                    }
+                }
                 match &field.ty {
                     syn::Type::Path(p) => {
                         match p.path.segments.first().unwrap().ident.to_string().as_str() {
@@ -80,24 +112,33 @@ pub fn datastore_entity(input: TokenStream) -> TokenStream {
     let into_properties = fields.iter().map(|f| f.into_property.clone()).collect::<Vec<_>>();
     let from_properties = fields.iter().map(|f| f.from_property.clone()).collect::<Vec<_>>();
 
+    let kind_str = kind.unwrap();
+    let key_field_str = key_field.unwrap();
+    let key_field_expr = parse_expr(&key_field_str);
+    let self_key_field_expr = parse_expr(&format!("self.{}.as_ref()", key_field_str));
+    let entity_key_field_expr = parse_expr(&format!("entity.{}", key_field_str));
+
     let tokens = quote! {
-        /// Force DatastoreEntity to be implemented
-        impl #name where #name: DatastoreEntity {}
+        impl #name {
+            pub const fn kind(&self) -> &'static str {
+                #kind_str
+            }
 
-        impl core::convert::TryFrom<datastore_entity::DatastoreProperties> for #name {
-            type Error = datastore_entity::DatastoreParseError;
-
-            fn try_from(mut properties: datastore_entity::DatastoreProperties) -> Result<Self, Self::Error> {
-                Self::try_from(&mut properties)
+            pub fn id(&self) -> core::option::Option<&google_datastore1::schemas::Key> {
+                #self_key_field_expr
             }
         }
 
-        impl core::convert::TryFrom<&mut datastore_entity::DatastoreProperties> for #name {
+        impl core::convert::TryFrom<datastore_entity::DatastoreEntity> for #name {
             type Error = datastore_entity::DatastoreParseError;
 
-            fn try_from(properties: &mut datastore_entity::DatastoreProperties) -> Result<Self, Self::Error> {
+            fn try_from(mut entity: datastore_entity::DatastoreEntity) -> Result<Self, Self::Error> {
+                let key = entity.key();
+                let mut properties = datastore_entity::DatastoreProperties::from(entity)
+                    .ok_or_else(|| datastore_entity::DatastoreParseError::NoProperties)?;
                 Ok(
                     #name {
+                        #key_field_expr: key,
                         #(
                             #idents: #into_properties?,
                         )*
@@ -106,13 +147,16 @@ pub fn datastore_entity(input: TokenStream) -> TokenStream {
             }
         }
 
-        impl core::convert::From<#name> for datastore_entity::DatastoreProperties {
+        impl core::convert::From<#name> for datastore_entity::DatastoreEntity {
             fn from(entity: #name) -> Self {
                 let mut properties = datastore_entity::DatastoreProperties::new();
                 #(
                     #from_properties;
                 )*
-                properties
+                datastore_entity::DatastoreEntity::from(
+                    #entity_key_field_expr,
+                    properties,
+                )
             }
         }
     };
