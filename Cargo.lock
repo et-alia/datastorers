@@ -149,6 +149,7 @@ dependencies = [
  "datastore_entity_derives",
  "gcp_auth",
  "google-datastore1",
+ "google_api_auth",
 ]
 
 [[package]]

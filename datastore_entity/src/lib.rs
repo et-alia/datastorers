@@ -1,10 +1,18 @@
 use gcp_auth::Token;
 use std::collections::BTreeMap;
-use google_datastore1::schemas::{Entity, Value, Key};
+use google_datastore1::schemas::{Entity, Value, Key, PathElement, LookupRequest, LookupResponse};
+use google_datastore1::Client;
+use google_api_auth::GetAccessToken;
+
 use std::ops::Deref;
 use std::fmt::{Display, Formatter};
+use std::convert::TryInto;
+use std::error::Error;
 
 pub use datastore_entity_derives::{DatastoreManaged};
+
+
+
 
 #[derive(Debug, Clone)]
 pub struct DatastoreEntity(Entity);
@@ -28,8 +36,57 @@ impl Display for DatastoreEntity {
     }
 }
 
-pub trait FetchToken {
-    fn fetch_token() -> Token;
+
+pub trait DatastoreFetch<T> {
+
+    fn get_by_id<A>(id: i64, token: A, project_name: &String) -> Result<T, String> // TODO - error format
+    where A: ::google_api_auth::GetAccessToken + 'static;
+}
+
+impl<T: core::convert::TryFrom<DatastoreEntity>> DatastoreFetch<T> for T {
+
+    fn get_by_id<A>(id: i64, token: A, project_name: &String) -> Result<T, String> 
+        where A: ::google_api_auth::GetAccessToken + 'static
+    {
+
+        let client = Client::new(token);
+        let projects = client.projects();
+
+        let key = Key{
+            partition_id: None,
+            path: Some(vec![PathElement {
+                id: Some(id),
+                kind: Some(T::kind()),
+                name: None,
+            }]),
+        };
+        let req = LookupRequest{
+            keys: Some(vec![key]),
+            read_options: None
+        };
+        let resp: LookupResponse = projects.lookup(req, project_name).execute()
+            .map_err(|_e: google_datastore1::Error| -> String {"Failed to fetch entity".to_string()})?;
+        
+        match resp.found {
+            Some(found) => {
+                
+                for f in found {
+                    if let Some(entity) = f.entity {
+                        let props = DatastoreProperties::from_map(entity.properties.unwrap());
+                         let result: T = DatastoreEntity::from(entity.key, props)
+                            .try_into()
+                            .map_err(|_e: <T as std::convert::TryFrom<DatastoreEntity>>::Error| -> String {"Failed to fetch entity".to_string()})
+                            .unwrap();
+                        
+
+                        return Ok(result);
+                    }
+                }
+                Err("No matching entity found".to_string())
+            },
+            None => Err("No matching entity found".to_string())
+        }
+    }
 }
 
 #[derive(Debug)]
