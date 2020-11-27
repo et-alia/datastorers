@@ -56,6 +56,10 @@ impl DatastoreProperties {
         Some(DatastoreProperties(entity.0.properties?))
     }
 
+    pub fn from_map(map: BTreeMap::<String, Value>) -> DatastoreProperties {
+        DatastoreProperties(map)
+    }
+
     pub fn get_string(&mut self, key: &str) -> Result<String, DatastoreParseError> {
         match self.0.remove(key) {
             Some(value) => value.string_value.ok_or_else(|| DatastoreParseError::NoSuchValue),
