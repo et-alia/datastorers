@@ -43,51 +43,45 @@ pub trait DatastoreFetch<T> {
     where A: ::google_api_auth::GetAccessToken + 'static;
 }
 
-impl<T: core::convert::TryFrom<DatastoreEntity>> DatastoreFetch<T> for T {
 
-    fn get_by_id<A>(id: i64, token: A, project_name: &String) -> Result<T, String> 
-        where A: ::google_api_auth::GetAccessToken + 'static
-    {
+pub fn get_one_by_id<A>(id: i64, kind: String, token: A, project_name: &String) -> Result<DatastoreEntity, String>
+    where A: ::google_api_auth::GetAccessToken + 'static
+{
+    let client = Client::new(token);
+    let projects = client.projects();
 
-        let client = Client::new(token);
-        let projects = client.projects();
-
-        let key = Key{
-            partition_id: None,
-            path: Some(vec![PathElement {
-                id: Some(id),
-                kind: Some(T::kind()),
-                name: None,
-            }]),
-        };
-        let req = LookupRequest{
-            keys: Some(vec![key]),
-            read_options: None
-        };
-        let resp: LookupResponse = projects.lookup(req, project_name).execute()
-            .map_err(|_e: google_datastore1::Error| -> String {"Failed to fetch entity".to_string()})?;
-        
-        match resp.found {
-            Some(found) => {
-                
-                for f in found {
-                    if let Some(entity) = f.entity {
-                        let props = DatastoreProperties::from_map(entity.properties.unwrap());
-                         let result: T = DatastoreEntity::from(entity.key, props)
-                            .try_into()
-                            .map_err(|_e: <T as std::convert::TryFrom<DatastoreEntity>>::Error| -> String {"Failed to fetch entity".to_string()})
-                            .unwrap();
-                        
-
-                        return Ok(result);
-                    }
+    let key = Key{
+        partition_id: None,
+        path: Some(vec![PathElement {
+            id: Some(id),
+            kind: Some(kind),
+            name: None,
+        }]),
+    };
+    let req = LookupRequest{
+        keys: Some(vec![key]),
+        read_options: None
+    };
+    let resp: LookupResponse = projects.lookup(req, project_name).execute()
+        .map_err(|_e: google_datastore1::Error| -> String {"Failed to fetch entity".to_string()})?;
+    
+    match resp.found {
+        Some(found) => {
+            
+            for f in found {
+                if let Some(entity) = f.entity {
+                    let props = DatastoreProperties::from_map(entity.properties.unwrap());
+                    let result = DatastoreEntity::from(entity.key, props);
+                    
+                    return Ok(result);
                 }
-                Err("No matching entity found".to_string())
-            },
-            None => Err("No matching entity found".to_string())
-        }
+            }
+            Err("No matching entity found".to_string())
+        },
+        None => Err("No matching entity found".to_string())
     }
 }
+
 
 #[derive(Debug)]
 pub enum DatastoreParseError {

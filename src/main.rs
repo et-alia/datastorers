@@ -52,7 +52,7 @@ fn test_get_entity() -> Result<Game, String> {
 
     let gtoken = GoogleToken::get_token()
         .map_err(|_e: gcp_auth::Error| -> String {"Failed to fetch entity".to_string()})?;
-    return Game::get_by_id(5632499082330112, gtoken, &TEST_PROJECT_NAME.to_string());
+    return Game::get_one_by_id(5632499082330112, gtoken, &TEST_PROJECT_NAME.to_string());
     
 
 }
