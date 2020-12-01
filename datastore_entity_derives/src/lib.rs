@@ -260,6 +260,22 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                     return Ok(result)
                 }
             )*
+
+            pub fn commit<A>(self, token: A, project_name: &String) -> Result<#name, String>
+                where A: ::google_api_auth::GetAccessToken + 'static
+            {
+                let result_entity = datastore_entity::commit_one(
+                    self.into(),
+                    #kind_str.to_string(),
+                    token,
+                    project_name
+                )?;
+                let result: #name = result_entity
+                    .try_into()
+                    .unwrap();
+                return Ok(result)
+            }
+
         }
 
         impl core::convert::TryFrom<datastore_entity::DatastoreEntity> for #name {

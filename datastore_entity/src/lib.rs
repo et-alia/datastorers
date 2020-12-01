@@ -1,5 +1,6 @@
 use google_datastore1::schemas::{
-    Entity, Filter, Key, KindExpression, LookupRequest, LookupResponse, PathElement,
+    BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
+    Filter, Key, KindExpression, LookupRequest, LookupResponse, Mutation, PathElement,
     PropertyFilter, PropertyFilterOp, PropertyReference, Query, RunQueryRequest, RunQueryResponse,
     Value,
 };
@@ -25,6 +26,14 @@ impl DatastoreEntity {
 
     pub fn key(&self) -> Option<Key> {
         self.0.key.clone()
+    }
+
+    pub fn has_key(&self) -> bool {
+        self.0.key.is_some()
+    }
+
+    pub fn set_key(&mut self, key: Option<Key>) {
+        self.0.key = key;
     }
 }
 
@@ -139,6 +148,87 @@ where
         }
         None => Err("No matching entity found".to_string()),
     }
+}
+
+fn generate_empty_key(kind: String) -> Key {
+    Key {
+        partition_id: None,
+        path: Some(vec![PathElement {
+            id: None,
+            kind: Some(kind),
+            name: None,
+        }]),
+    }
+}
+
+pub fn commit_one<A>(
+    entity: DatastoreEntity,
+    kind: String,
+    token: A,
+    project_name: &String,
+) -> Result<DatastoreEntity, String>
+where
+    A: ::google_api_auth::GetAccessToken + 'static,
+{
+    let mut result_entity = entity.clone();
+    let client = Client::new(token);
+    let projects = client.projects();
+    let builder = projects.begin_transaction(
+        BeginTransactionRequest {
+            transaction_options: None,
+        },
+        project_name,
+    );
+    let begin_transaction: BeginTransactionResponse =
+        builder
+            .execute()
+            .map_err(|_e: google_datastore1::Error| -> String {
+                "Begin transaction request failed".to_string()
+            })?;
+    let is_insert = !entity.has_key();
+    let key = entity
+        .key()
+        .unwrap_or_else(|| -> Key { generate_empty_key(kind) });
+    let properties: DatastoreProperties = DatastoreProperties::from(entity).unwrap();
+
+    let ent = Entity {
+        key: Some(key),
+        properties: Some(properties.0),
+    };
+
+    let mut mutation = Mutation::default();
+    if is_insert {
+        mutation.insert = Some(ent);
+    } else {
+        mutation.update = Some(ent);
+    }
+    let mutations: Vec<Mutation> = vec![mutation];
+
+    let commit_request = projects.commit(
+        CommitRequest {
+            mode: None,
+            mutations: Some(mutations),
+            transaction: begin_transaction.transaction,
+        },
+        project_name,
+    );
+
+    let cre: CommitResponse =
+        commit_request
+            .execute()
+            .map_err(|_e: google_datastore1::Error| -> String {
+                "Commit transaction failed".to_string()
+            })?;
+    println!("{:#?}", cre);
+
+    if is_insert {
+        // The commit result shall contain a key that we can assign to the entity in order to later
+        // be able to update it
+        let mutation_result = &cre.mutation_results.unwrap()[0]; // TODO - assert length, shall be one! + handle case where res is missing
+        result_entity.set_key(mutation_result.key.clone()); // TODO - clone needed? can I not take ownership?
+    }
+
+    Ok(result_entity)
 }
 
 #[derive(Debug)]
