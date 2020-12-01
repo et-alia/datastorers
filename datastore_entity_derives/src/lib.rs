@@ -127,6 +127,17 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             pub fn id(&self) -> core::option::Option<&google_datastore1::schemas::Key> {
                 #self_key_field_expr
             }
+
+            pub fn get_one_by_id<A>(id: i64, token: A, project_name: &String) -> Result<#name, String> 
+                where A: ::google_api_auth::GetAccessToken + 'static
+            {
+                let datastoreEntity = datastore_entity::get_one_by_id(id, #kind_str.to_string(), token, project_name)?;
+                let result: #name = datastoreEntity
+                    .try_into()
+                    .map_err(|_e: <#name as std::convert::TryFrom<DatastoreEntity>>::Error| -> String {"Failed to fetch entity".to_string()})
+                    .unwrap();
+                return Ok(result)
+            }
         }
 
         impl core::convert::TryFrom<datastore_entity::DatastoreEntity> for #name {
