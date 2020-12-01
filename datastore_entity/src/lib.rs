@@ -1,26 +1,23 @@
-use gcp_auth::Token;
-use std::collections::BTreeMap;
-use google_datastore1::schemas::{Entity, Value, Key, PathElement, LookupRequest, LookupResponse, RunQueryRequest, Query, RunQueryResponse, KindExpression, Filter, PropertyFilter, PropertyReference, PropertyFilterOp};
+use google_datastore1::schemas::{
+    Entity, Filter, Key, KindExpression, LookupRequest, LookupResponse, PathElement,
+    PropertyFilter, PropertyFilterOp, PropertyReference, Query, RunQueryRequest, RunQueryResponse,
+    Value,
+};
 use google_datastore1::Client;
-use google_api_auth::GetAccessToken;
+use std::collections::BTreeMap;
 
-use std::ops::Deref;
-use std::fmt::{Display, Formatter};
-use std::convert::TryInto;
-use std::error::Error;
 use std::convert::From;
+use std::fmt::{Display, Formatter};
+use std::ops::Deref;
 
-pub use datastore_entity_derives::{DatastoreManaged};
-
-
-
+pub use datastore_entity_derives::DatastoreManaged;
 
 #[derive(Debug, Clone)]
 pub struct DatastoreEntity(Entity);
 
 impl DatastoreEntity {
     pub fn from(key: Option<Key>, properties: DatastoreProperties) -> DatastoreEntity {
-        DatastoreEntity(Entity{
+        DatastoreEntity(Entity {
             key,
             properties: Some(properties.0),
         })
@@ -37,21 +34,26 @@ impl Display for DatastoreEntity {
     }
 }
 
-
 pub trait DatastoreFetch<T> {
-
-    fn get_by_id<A>(id: i64, token: A, project_name: &String) -> Result<T, String> // TODO - error format
-    where A: ::google_api_auth::GetAccessToken + 'static;
+    fn get_by_id<A>(id: i64, token: A, project_name: &String) -> Result<T, String>
+    // TODO - error format
+    where
+        A: ::google_api_auth::GetAccessToken + 'static;
 }
 
-
-pub fn get_one_by_id<A>(id: i64, kind: String, token: A, project_name: &String) -> Result<DatastoreEntity, String>
-    where A: ::google_api_auth::GetAccessToken + 'static
+pub fn get_one_by_id<A>(
+    id: i64,
+    kind: String,
+    token: A,
+    project_name: &String,
+) -> Result<DatastoreEntity, String>
+where
+    A: ::google_api_auth::GetAccessToken + 'static,
 {
     let client = Client::new(token);
     let projects = client.projects();
 
-    let key = Key{
+    let key = Key {
         partition_id: None,
         path: Some(vec![PathElement {
             id: Some(id),
@@ -59,41 +61,44 @@ pub fn get_one_by_id<A>(id: i64, kind: String, token: A, project_name: &String) 
             name: None,
         }]),
     };
-    let req = LookupRequest{
+    let req = LookupRequest {
         keys: Some(vec![key]),
-        read_options: None
+        read_options: None,
     };
-    let resp: LookupResponse = projects.lookup(req, project_name).execute()
-        .map_err(|_e: google_datastore1::Error| -> String {"Failed to fetch entity by id".to_string()})?;
-    
+    let resp: LookupResponse = projects.lookup(req, project_name).execute().map_err(
+        |_e: google_datastore1::Error| -> String { "Failed to fetch entity by id".to_string() },
+    )?;
+
     match resp.found {
         Some(found) => {
-            
             for f in found {
                 if let Some(entity) = f.entity {
                     let props = DatastoreProperties::from_map(entity.properties.unwrap());
                     let result = DatastoreEntity::from(entity.key, props);
-                    
+
                     return Ok(result);
                 }
             }
             Err("No matching entity found".to_string())
-        },
-        None => Err("No matching entity found".to_string())
+        }
+        None => Err("No matching entity found".to_string()),
     }
 }
 
-
-
-fn get_value_for_key<K: Into<DatastoreValue>>(key: K) -> Value
-{
-    let datastoreValue: DatastoreValue = key.into();
-    datastoreValue.into()
+fn get_datastore_value_for_value<K: Into<DatastoreValue>>(value: K) -> Value {
+    let datastore_value: DatastoreValue = value.into();
+    datastore_value.into()
 }
 
-
-pub fn get_one_by_property<A, K: Into<DatastoreValue>>(property_name: String, property_value: K, kind: String, token: A, project_name: &String) -> Result<DatastoreEntity, String>
-    where A: ::google_api_auth::GetAccessToken + 'static
+pub fn get_one_by_property<A, K: Into<DatastoreValue>>(
+    property_name: String,
+    property_value: K,
+    kind: String,
+    token: A,
+    project_name: &String,
+) -> Result<DatastoreEntity, String>
+where
+    A: ::google_api_auth::GetAccessToken + 'static,
 {
     let client = Client::new(token);
     let projects = client.projects();
@@ -101,32 +106,28 @@ pub fn get_one_by_property<A, K: Into<DatastoreValue>>(property_name: String, pr
     let mut req = RunQueryRequest::default();
     let mut filter = Filter::default();
     filter.property_filter = Some(PropertyFilter {
-        property: Some(PropertyReference{
-            name: Some(property_name)
+        property: Some(PropertyReference {
+            name: Some(property_name),
         }),
-        value: Some(get_value_for_key(property_value)),
-        op: Some(PropertyFilterOp::Equal)
+        value: Some(get_datastore_value_for_value(property_value)),
+        op: Some(PropertyFilterOp::Equal),
     });
     let mut query = Query::default();
-    query.kind = Some(vec![
-        KindExpression{
-            name: Some(kind)
-        }
-    ]);
+    query.kind = Some(vec![KindExpression { name: Some(kind) }]);
     query.filter = Some(filter);
     query.limit = Some(1);
     req.query = Some(query);
 
-    let resp: RunQueryResponse = projects.run_query(req, project_name).execute()
-        .map_err(|e: google_datastore1::Error| -> String {
-            "Failed to fetch entity by prop".to_string()
-        })?;
+    let resp: RunQueryResponse = projects.run_query(req, project_name).execute().map_err(
+        |_e: google_datastore1::Error| -> String { "Failed to fetch entity by prop".to_string() },
+    )?;
 
     match resp.batch {
         Some(batch) => {
             // TODO - Validate more results -> ther shall not be any more results!
-            let found  = batch.entity_results.unwrap(); // TODO - check before unwrap
-            for f in found { // TODO - Validate legth instead of just returning the first element
+            let found = batch.entity_results.unwrap(); // TODO - check before unwrap
+            for f in found {
+                // TODO - Validate legth instead of just returning the first element
                 if let Some(entity) = f.entity {
                     let props = DatastoreProperties::from_map(entity.properties.unwrap());
                     let result = DatastoreEntity::from(entity.key, props);
@@ -135,8 +136,8 @@ pub fn get_one_by_property<A, K: Into<DatastoreValue>>(property_name: String, pr
                 }
             }
             Err("No matching entity found".to_string())
-        },
-        None => Err("No matching entity found".to_string())
+        }
+        None => Err("No matching entity found".to_string()),
     }
 }
 
@@ -147,7 +148,7 @@ pub enum DatastoreParseError {
 }
 
 #[derive(Debug)]
-pub struct DatastoreProperties(BTreeMap::<String, Value>);
+pub struct DatastoreProperties(BTreeMap<String, Value>);
 
 impl Display for DatastoreProperties {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -164,13 +165,15 @@ impl DatastoreProperties {
         Some(DatastoreProperties(entity.0.properties?))
     }
 
-    pub fn from_map(map: BTreeMap::<String, Value>) -> DatastoreProperties {
+    pub fn from_map(map: BTreeMap<String, Value>) -> DatastoreProperties {
         DatastoreProperties(map)
     }
 
     pub fn get_string(&mut self, key: &str) -> Result<String, DatastoreParseError> {
         match self.0.remove(key) {
-            Some(value) => value.string_value.ok_or_else(|| DatastoreParseError::NoSuchValue),
+            Some(value) => value
+                .string_value
+                .ok_or_else(|| DatastoreParseError::NoSuchValue),
             None => Err(DatastoreParseError::NoSuchValue),
         }
     }
@@ -191,7 +194,9 @@ impl DatastoreProperties {
 
     pub fn get_integer(&mut self, key: &str) -> Result<i64, DatastoreParseError> {
         match self.0.remove(key) {
-            Some(value) => value.integer_value.ok_or_else(|| DatastoreParseError::NoSuchValue),
+            Some(value) => value
+                .integer_value
+                .ok_or_else(|| DatastoreParseError::NoSuchValue),
             None => Err(DatastoreParseError::NoSuchValue),
         }
     }
@@ -204,7 +209,9 @@ impl DatastoreProperties {
 
     pub fn get_bool(&mut self, key: &str) -> Result<bool, DatastoreParseError> {
         match self.0.remove(key) {
-            Some(value) => value.boolean_value.ok_or_else(|| DatastoreParseError::NoSuchValue),
+            Some(value) => value
+                .boolean_value
+                .ok_or_else(|| DatastoreParseError::NoSuchValue),
             None => Err(DatastoreParseError::NoSuchValue),
         }
     }

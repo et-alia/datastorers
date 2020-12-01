@@ -5,7 +5,7 @@
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use quote::{quote};
+use quote::quote;
 use syn::{DeriveInput, Expr, Ident};
 
 struct EntityGetter {
@@ -29,10 +29,14 @@ struct FieldMeta {
     entity_getter: Option<EntityGetter>,
 }
 
-
-fn generate_entity_getter(indexed: bool, property_type: &str, struct_prop_name: &String, ds_prop_name: &String) -> Option<EntityGetter> {
+fn generate_entity_getter(
+    indexed: bool,
+    property_type: &str,
+    struct_prop_name: &String,
+    ds_prop_name: &String,
+) -> Option<EntityGetter> {
     if indexed {
-        Some(EntityGetter{
+        Some(EntityGetter {
             property_type: parse_expr(property_type),
             get_one_method_name: parse_expr(&format!("get_one_by_{}", struct_prop_name)),
             datastore_property: parse_expr(&format!("\"{}\"", ds_prop_name)),
@@ -61,10 +65,10 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                                 if let syn::Lit::Str(lit_str) = name_value.lit.clone() {
                                     kind = Some(lit_str.value());
                                 }
-                            },
+                            }
                             _ => (),
                         }
-                    },
+                    }
                     _ => (),
                 }
             }
@@ -78,23 +82,22 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                         syn::Meta::Path(ref path) => {
                             match path.get_ident().unwrap().to_string().as_str() {
                                 "key" => {
-                                    key_field = Some(field.ident.as_ref().unwrap().clone().to_string());
-                                },
+                                    key_field =
+                                        Some(field.ident.as_ref().unwrap().clone().to_string());
+                                }
                                 "indexed" => {
                                     indexed = true;
                                 }
                                 _ => (),
                             }
-                        },
+                        }
                         syn::Meta::NameValue(ref name_value) => {
                             match name_value.path.get_ident().unwrap().to_string().as_str() {
-                                "property" => {
-                                    match &name_value.lit {
-                                        syn::Lit::Str(lit_str) => {
-                                            property_name = Some(lit_str.value());
-                                        }
-                                        _ => panic!("invalid value type for property attribute")
+                                "property" => match &name_value.lit {
+                                    syn::Lit::Str(lit_str) => {
+                                        property_name = Some(lit_str.value());
                                     }
+                                    _ => panic!("invalid value type for property attribute"),
                                 },
                                 _ => (),
                             }
@@ -106,46 +109,78 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                     syn::Type::Path(p) => {
                         let ident = field.ident.as_ref().unwrap().clone();
                         let struct_property_name = ident.to_string();
-                        let datastore_property_name = property_name.unwrap_or(struct_property_name.clone());
+                        let datastore_property_name =
+                            property_name.unwrap_or(struct_property_name.clone());
                         match p.path.segments.first().unwrap().ident.to_string().as_str() {
                             "String" => {
-                                let into_property_expr_string = format!("properties.get_string(\"{}\")", datastore_property_name);
-                                let from_property_expr_string = format!("properties.set_string(\"{}\", entity.{})", datastore_property_name, struct_property_name);
+                                let into_property_expr_string = format!(
+                                    "properties.get_string(\"{}\")",
+                                    datastore_property_name
+                                );
+                                let from_property_expr_string = format!(
+                                    "properties.set_string(\"{}\", entity.{})",
+                                    datastore_property_name, struct_property_name
+                                );
                                 field_metas.push(FieldMeta {
                                     ident,
                                     into_property: parse_expr(&into_property_expr_string),
                                     from_property: parse_expr(&from_property_expr_string),
-                                    entity_getter: generate_entity_getter(indexed, "String", &struct_property_name, &datastore_property_name),
+                                    entity_getter: generate_entity_getter(
+                                        indexed,
+                                        "String",
+                                        &struct_property_name,
+                                        &datastore_property_name,
+                                    ),
                                 });
-                            },
+                            }
                             "i64" => {
-                                let into_property_expr_string = format!("properties.get_integer(\"{}\")", datastore_property_name);
-                                let from_property_expr_string = format!("properties.set_integer(\"{}\", entity.{})", datastore_property_name, struct_property_name);
+                                let into_property_expr_string = format!(
+                                    "properties.get_integer(\"{}\")",
+                                    datastore_property_name
+                                );
+                                let from_property_expr_string = format!(
+                                    "properties.set_integer(\"{}\", entity.{})",
+                                    datastore_property_name, struct_property_name
+                                );
                                 field_metas.push(FieldMeta {
                                     ident,
                                     into_property: parse_expr(&into_property_expr_string),
                                     from_property: parse_expr(&from_property_expr_string),
-                                    entity_getter: generate_entity_getter(indexed, "i64", &struct_property_name, &datastore_property_name),
+                                    entity_getter: generate_entity_getter(
+                                        indexed,
+                                        "i64",
+                                        &struct_property_name,
+                                        &datastore_property_name,
+                                    ),
                                 });
-                            },
+                            }
                             "bool" => {
-                                let into_property_expr_string = format!("properties.get_bool(\"{}\")", datastore_property_name);
-                                let from_property_expr_string = format!("properties.set_bool(\"{}\", entity.{})", datastore_property_name, struct_property_name);
+                                let into_property_expr_string =
+                                    format!("properties.get_bool(\"{}\")", datastore_property_name);
+                                let from_property_expr_string = format!(
+                                    "properties.set_bool(\"{}\", entity.{})",
+                                    datastore_property_name, struct_property_name
+                                );
                                 field_metas.push(FieldMeta {
                                     ident,
                                     into_property: parse_expr(&into_property_expr_string),
                                     from_property: parse_expr(&from_property_expr_string),
-                                    entity_getter: generate_entity_getter(indexed, "bool", &struct_property_name, &datastore_property_name),
+                                    entity_getter: generate_entity_getter(
+                                        indexed,
+                                        "bool",
+                                        &struct_property_name,
+                                        &datastore_property_name,
+                                    ),
                                 });
-                            },
+                            }
                             _ => (), // Ignore
                         }
-                    },
+                    }
                     _ => (), // Ignore
                 }
             }
             field_metas
-        },
+        }
         syn::Data::Enum(_) => panic!("You can only derive this on structs!"),
         syn::Data::Union(_) => panic!("You can only derive this on structs!"),
     };
@@ -153,8 +188,14 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
     let name = &ast.ident;
     let idents = fields.iter().map(|f| f.ident.clone()).collect::<Vec<_>>();
 
-    let into_properties = fields.iter().map(|f| f.into_property.clone()).collect::<Vec<_>>();
-    let from_properties = fields.iter().map(|f| f.from_property.clone()).collect::<Vec<_>>();
+    let into_properties = fields
+        .iter()
+        .map(|f| f.into_property.clone())
+        .collect::<Vec<_>>();
+    let from_properties = fields
+        .iter()
+        .map(|f| f.from_property.clone())
+        .collect::<Vec<_>>();
 
     let kind_str = kind.unwrap();
     let key_field_str = key_field.unwrap();
@@ -162,15 +203,24 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
     let self_key_field_expr = parse_expr(&format!("self.{}.as_ref()", key_field_str));
     let entity_key_field_expr = parse_expr(&format!("entity.{}", key_field_str));
 
-    let entity_getters = fields.iter()
+    let entity_getters = fields
+        .iter()
         .filter(|f| f.entity_getter.is_some())
-        .map(|f| f.entity_getter.as_ref().unwrap().get_one_method_name.clone())
+        .map(|f| {
+            f.entity_getter
+                .as_ref()
+                .unwrap()
+                .get_one_method_name
+                .clone()
+        })
         .collect::<Vec<_>>();
-    let entity_getter_key_types = fields.iter()
+    let entity_getter_key_types = fields
+        .iter()
         .filter(|f| f.entity_getter.is_some())
         .map(|f| f.entity_getter.as_ref().unwrap().property_type.clone())
         .collect::<Vec<_>>();
-    let ds_property_names = fields.iter()
+    let ds_property_names = fields
+        .iter()
         .filter(|f| f.entity_getter.is_some())
         .map(|f| f.entity_getter.as_ref().unwrap().datastore_property.clone())
         .collect::<Vec<_>>();
@@ -185,7 +235,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #self_key_field_expr
             }
 
-            pub fn get_one_by_id<A>(id: i64, token: A, project_name: &String) -> Result<#name, String> 
+            pub fn get_one_by_id<A>(id: i64, token: A, project_name: &String) -> Result<#name, String>
                 where A: ::google_api_auth::GetAccessToken + 'static
             {
                 let datastoreEntity = datastore_entity::get_one_by_id(id, #kind_str.to_string(), token, project_name)?;
@@ -196,7 +246,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 return Ok(result)
             }
             #(
-                pub fn #entity_getters<A>(value: #entity_getter_key_types, token: A, project_name: &String) -> Result<#name, String> 
+                pub fn #entity_getters<A>(value: #entity_getter_key_types, token: A, project_name: &String) -> Result<#name, String>
                     where A: ::google_api_auth::GetAccessToken + 'static
                 {
                     let datastoreEntity = datastore_entity::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), token, project_name)?;
@@ -209,7 +259,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                         .unwrap();
                     return Ok(result)
                 }
-            )* 
+            )*
         }
 
         impl core::convert::TryFrom<datastore_entity::DatastoreEntity> for #name {
