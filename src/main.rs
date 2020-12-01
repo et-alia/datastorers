@@ -21,6 +21,7 @@ struct Game {
     #[key]
     pub key: Option<Key>,
 
+    #[indexed]
     pub Name: String, 
     pub Bool: bool,
 }
