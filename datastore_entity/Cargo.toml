@@ -7,4 +7,5 @@ edition = "2018"
 [dependencies]
 google-datastore1 = { git = "https://github.com/bes/google-datastore1-generated" }
 gcp_auth = "0.3.2"
+google_api_auth = { git = "https://github.com/google-apis-rs/generator" }
 datastore_entity_derives = { path = "../datastore_entity_derives" }
