@@ -92,7 +92,7 @@ fn get_value_for_key<K: Into<DatastoreValue>>(key: K) -> Value
 }
 
 
-pub fn get_one_by_property<A, K: Into<DatastoreValue>>(prop: String, key: K, kind: String, token: A, project_name: &String) -> Result<DatastoreEntity, String>
+pub fn get_one_by_property<A, K: Into<DatastoreValue>>(property_name: String, property_value: K, kind: String, token: A, project_name: &String) -> Result<DatastoreEntity, String>
     where A: ::google_api_auth::GetAccessToken + 'static
 {
     let client = Client::new(token);
@@ -102,9 +102,9 @@ pub fn get_one_by_property<A, K: Into<DatastoreValue>>(prop: String, key: K, kin
     let mut filter = Filter::default();
     filter.property_filter = Some(PropertyFilter {
         property: Some(PropertyReference{
-            name: Some(prop)
+            name: Some(property_name)
         }),
-        value: Some(get_value_for_key(key)),
+        value: Some(get_value_for_key(property_value)),
         op: Some(PropertyFilterOp::Equal)
     });
     let mut query = Query::default();
