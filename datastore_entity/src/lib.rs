@@ -1,10 +1,13 @@
+pub mod connection;
+mod accesstoken;
+pub use crate::connection::DatastoreConnection;
+
 use google_datastore1::schemas::{
     BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
     Filter, Key, KindExpression, LookupRequest, LookupResponse, Mutation, PathElement,
     PropertyFilter, PropertyFilterOp, PropertyReference, Query, RunQueryRequest, RunQueryResponse,
     Value,
 };
-use google_datastore1::Client;
 use std::collections::BTreeMap;
 
 use std::convert::From;
@@ -12,6 +15,7 @@ use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
 pub use datastore_entity_derives::DatastoreManaged;
+
 
 #[derive(Debug, Clone)]
 pub struct DatastoreEntity(Entity);
@@ -43,23 +47,15 @@ impl Display for DatastoreEntity {
     }
 }
 
-pub trait DatastoreFetch<T> {
-    fn get_by_id<A>(id: i64, token: A, project_name: &String) -> Result<T, String>
-    // TODO - error format
-    where
-        A: ::google_api_auth::GetAccessToken + 'static;
-}
-
-pub fn get_one_by_id<A>(
+pub fn get_one_by_id<T>(
     id: i64,
     kind: String,
-    token: A,
-    project_name: &String,
+    connection: &T
 ) -> Result<DatastoreEntity, String>
 where
-    A: ::google_api_auth::GetAccessToken + 'static,
+    T: DatastoreConnection
 {
-    let client = Client::new(token);
+    let client = connection.get_client();
     let projects = client.projects();
 
     let key = Key {
@@ -74,7 +70,7 @@ where
         keys: Some(vec![key]),
         read_options: None,
     };
-    let resp: LookupResponse = projects.lookup(req, project_name).execute().map_err(
+    let resp: LookupResponse = projects.lookup(req, connection.get_project_name()).execute().map_err(
         |_e: google_datastore1::Error| -> String { "Failed to fetch entity by id".to_string() },
     )?;
 
@@ -99,17 +95,17 @@ fn get_datastore_value_for_value<K: Into<DatastoreValue>>(value: K) -> Value {
     datastore_value.into()
 }
 
-pub fn get_one_by_property<A, K: Into<DatastoreValue>>(
+pub fn get_one_by_property<T, K>(
     property_name: String,
     property_value: K,
     kind: String,
-    token: A,
-    project_name: &String,
+    connection: &T
 ) -> Result<DatastoreEntity, String>
 where
-    A: ::google_api_auth::GetAccessToken + 'static,
+    T: DatastoreConnection,
+    K: Into<DatastoreValue>
 {
-    let client = Client::new(token);
+    let client = connection.get_client();
     let projects = client.projects();
 
     let mut req = RunQueryRequest::default();
@@ -127,7 +123,7 @@ where
     query.limit = Some(1);
     req.query = Some(query);
 
-    let resp: RunQueryResponse = projects.run_query(req, project_name).execute().map_err(
+    let resp: RunQueryResponse = projects.run_query(req, connection.get_project_name()).execute().map_err(
         |_e: google_datastore1::Error| -> String { "Failed to fetch entity by prop".to_string() },
     )?;
 
@@ -161,23 +157,22 @@ fn generate_empty_key(kind: String) -> Key {
     }
 }
 
-pub fn commit_one<A>(
+pub fn commit_one<T>(
     entity: DatastoreEntity,
     kind: String,
-    token: A,
-    project_name: &String,
+    connection: &T
 ) -> Result<DatastoreEntity, String>
 where
-    A: ::google_api_auth::GetAccessToken + 'static,
+    T: DatastoreConnection
 {
     let mut result_entity = entity.clone();
-    let client = Client::new(token);
+    let client = connection.get_client();
     let projects = client.projects();
     let builder = projects.begin_transaction(
         BeginTransactionRequest {
             transaction_options: None,
         },
-        project_name,
+        connection.get_project_name(),
     );
     let begin_transaction: BeginTransactionResponse =
         builder
@@ -210,7 +205,7 @@ where
             mutations: Some(mutations),
             transaction: begin_transaction.transaction,
         },
-        project_name,
+        connection.get_project_name(),
     );
 
     let cre: CommitResponse =

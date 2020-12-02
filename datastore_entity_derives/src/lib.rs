@@ -235,10 +235,10 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #self_key_field_expr
             }
 
-            pub fn get_one_by_id<A>(id: i64, token: A, project_name: &String) -> Result<#name, String>
-                where A: ::google_api_auth::GetAccessToken + 'static
+            pub fn get_one_by_id<T>(id: i64, connection: &T) -> Result<#name, String>
+                where T: datastore_entity::DatastoreConnection
             {
-                let datastoreEntity = datastore_entity::get_one_by_id(id, #kind_str.to_string(), token, project_name)?;
+                let datastoreEntity = datastore_entity::get_one_by_id(id, #kind_str.to_string(), connection)?;
                 let result: #name = datastoreEntity
                     .try_into()
                     .map_err(|_e: <#name as std::convert::TryFrom<DatastoreEntity>>::Error| -> String {"Failed to fetch entity".to_string()})
@@ -246,10 +246,10 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 return Ok(result)
             }
             #(
-                pub fn #entity_getters<A>(value: #entity_getter_key_types, token: A, project_name: &String) -> Result<#name, String>
-                    where A: ::google_api_auth::GetAccessToken + 'static
+                pub fn #entity_getters<T>(value: #entity_getter_key_types, connection: &T) -> Result<#name, String>
+                    where T: datastore_entity::DatastoreConnection
                 {
-                    let datastoreEntity = datastore_entity::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), token, project_name)?;
+                    let datastoreEntity = datastore_entity::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection)?;
                     let result: #name = datastoreEntity
                         .try_into()
                         .map_err(|e: <#name as std::convert::TryFrom<DatastoreEntity>>::Error| -> String {
@@ -261,14 +261,13 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 }
             )*
 
-            pub fn commit<A>(self, token: A, project_name: &String) -> Result<#name, String>
-                where A: ::google_api_auth::GetAccessToken + 'static
+            pub fn commit<T>(self, connection: &T) -> Result<#name, String>
+                where T: datastore_entity::DatastoreConnection
             {
                 let result_entity = datastore_entity::commit_one(
                     self.into(),
                     #kind_str.to_string(),
-                    token,
-                    project_name
+                    connection
                 )?;
                 let result: #name = result_entity
                     .try_into()
