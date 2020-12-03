@@ -152,6 +152,7 @@ dependencies = [
  "gcp_auth",
  "google-datastore1",
  "google_api_auth",
+ "thiserror",
  "tokio",
 ]
 
@@ -168,6 +169,7 @@ name = "datastorers"
 version = "0.0.1"
 dependencies = [
  "datastore_entity",
+ "google-datastore1",
 ]
 
 [[package]]

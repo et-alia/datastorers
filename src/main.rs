@@ -1,7 +1,7 @@
-use datastore_entity::{DatastoreEntity, DatastoreManaged};
 use datastore_entity::connection::Connection;
+use datastore_entity::{DatastoreManaged, DatastorersError};
 
-use google_datastore1::schemas::{Key};
+use google_datastore1::schemas::Key;
 
 use std::convert::TryInto;
 
@@ -15,13 +15,13 @@ struct Game {
 
     #[indexed]
     #[property = "Name"]
-    pub name: String, 
+    pub name: String,
 
     #[property = "Bool"]
     pub bool_value: bool,
 }
 
-fn test_get(connection: &Connection) -> Result<Game, String> {
+fn test_get(connection: &Connection) -> Result<Game, DatastorersError> {
     // Test get by id
     let game = Game::get_one_by_id(5643280054222848, connection)?;
     println!("FETCHED: {:#?}", game);
@@ -29,10 +29,10 @@ fn test_get(connection: &Connection) -> Result<Game, String> {
     // Test get by property
     let game = Game::get_one_by_name("GGGG".to_string(), connection)?;
     println!("FETCHED: {:#?}", game);
-    Ok(game) 
+    Ok(game)
 }
 
-fn test_insert(connection: &Connection) -> Result<Game, String> {
+fn test_insert(connection: &Connection) -> Result<Game, DatastorersError> {
     // Insert
     let game = Game {
         key: None,
@@ -43,7 +43,6 @@ fn test_insert(connection: &Connection) -> Result<Game, String> {
     let mut game = game.commit(connection)?;
     println!("POST INSERT: {:#?}", game);
 
-
     // Update same item
     game.bool_value = !game.bool_value;
     let updated = game.commit(connection)?;
@@ -52,13 +51,12 @@ fn test_insert(connection: &Connection) -> Result<Game, String> {
     Ok(updated)
 }
 
-
-fn run_tests() -> Result<(), String> {
+fn run_tests() -> Result<(), DatastorersError> {
     let connection = Connection::from_project_name(TEST_PROJECT_NAME.to_string())?;
     match test_insert(&connection) {
         Ok(game) => {
             println!("SUCCESS test_insert: {:#?}", game);
-        },
+        }
         Err(err) => {
             println!("ERROR running test_insert {:?}", err);
         }
@@ -67,7 +65,7 @@ fn run_tests() -> Result<(), String> {
     match test_get(&connection) {
         Ok(game) => {
             println!("SUCCESS test_get: {:#?}", game);
-        },
+        }
         Err(err) => {
             println!("ERROR running test_get {:?}", err);
         }
@@ -79,7 +77,7 @@ fn main() {
     match run_tests() {
         Ok(()) => {
             println!("Success");
-        },
+        }
         Err(err) => {
             println!("Error fetching data {:?}", err);
         }
