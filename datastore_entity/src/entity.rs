@@ -18,35 +18,79 @@ pub enum DatastoreParseError {
 }
 
 //
-// DatastoreEntity
+// DatastoreValue
 //
-#[derive(Debug, Clone)]
-pub struct DatastoreEntity(Entity);
+pub struct DatastoreValue(pub Value);
 
-impl DatastoreEntity {
-    pub fn from(key: Option<Key>, properties: DatastoreProperties) -> DatastoreEntity {
-        DatastoreEntity(Entity {
-            key,
-            properties: Some(properties.0),
+impl Default for DatastoreValue {
+    fn default() -> Self {
+        DatastoreValue(Value {
+            array_value: None,
+            blob_value: None,
+            boolean_value: None,
+            double_value: None,
+            entity_value: None,
+            exclude_from_indexes: None,
+            geo_point_value: None,
+            integer_value: None,
+            key_value: None,
+            meaning: None,
+            null_value: None,
+            string_value: None,
+            timestamp_value: None,
         })
-    }
-
-    pub fn key(&self) -> Option<Key> {
-        self.0.key.clone()
-    }
-
-    pub fn has_key(&self) -> bool {
-        self.0.key.is_some()
-    }
-
-    pub fn set_key(&mut self, key: Option<Key>) {
-        self.0.key = key;
     }
 }
 
-impl Display for DatastoreEntity {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:#?}", self.0)
+impl DatastoreValue {
+    pub fn string(&mut self, s: String) {
+        self.0.string_value = Some(s);
+    }
+
+    pub fn integer(&mut self, i: i64) {
+        self.0.integer_value = Some(i);
+    }
+
+    pub fn boolean(&mut self, b: bool) {
+        self.0.boolean_value = Some(b);
+    }
+}
+
+impl Deref for DatastoreValue {
+    type Target = Value;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<DatastoreValue> for Value {
+    fn from(val: DatastoreValue) -> Value {
+        val.0
+    }
+}
+
+impl From<String> for DatastoreValue {
+    fn from(string_value: String) -> DatastoreValue {
+        let mut val = DatastoreValue::default();
+        val.string(string_value);
+        return val;
+    }
+}
+
+impl From<bool> for DatastoreValue {
+    fn from(bool_value: bool) -> DatastoreValue {
+        let mut val = DatastoreValue::default();
+        val.boolean(bool_value);
+        return val;
+    }
+}
+
+impl From<i64> for DatastoreValue {
+    fn from(int_value: i64) -> DatastoreValue {
+        let mut val = DatastoreValue::default();
+        val.integer(int_value);
+        return val;
     }
 }
 
@@ -134,79 +178,34 @@ impl DatastoreProperties {
 }
 
 //
-// DatastoreValue
+// DatastoreEntity
 //
+#[derive(Debug, Clone)]
+pub struct DatastoreEntity(Entity);
 
-pub struct DatastoreValue(pub Value);
-
-impl Default for DatastoreValue {
-    fn default() -> Self {
-        DatastoreValue(Value {
-            array_value: None,
-            blob_value: None,
-            boolean_value: None,
-            double_value: None,
-            entity_value: None,
-            exclude_from_indexes: None,
-            geo_point_value: None,
-            integer_value: None,
-            key_value: None,
-            meaning: None,
-            null_value: None,
-            string_value: None,
-            timestamp_value: None,
+impl DatastoreEntity {
+    pub fn from(key: Option<Key>, properties: DatastoreProperties) -> DatastoreEntity {
+        DatastoreEntity(Entity {
+            key,
+            properties: Some(properties.0),
         })
     }
-}
 
-impl DatastoreValue {
-    pub fn string(&mut self, s: String) {
-        self.0.string_value = Some(s);
+    pub fn key(&self) -> Option<Key> {
+        self.0.key.clone()
     }
 
-    pub fn integer(&mut self, i: i64) {
-        self.0.integer_value = Some(i);
+    pub fn has_key(&self) -> bool {
+        self.0.key.is_some()
     }
 
-    pub fn boolean(&mut self, b: bool) {
-        self.0.boolean_value = Some(b);
+    pub fn set_key(&mut self, key: Option<Key>) {
+        self.0.key = key;
     }
 }
 
-impl Deref for DatastoreValue {
-    type Target = Value;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<DatastoreValue> for Value {
-    fn from(val: DatastoreValue) -> Value {
-        val.0
-    }
-}
-
-impl From<String> for DatastoreValue {
-    fn from(string_value: String) -> DatastoreValue {
-        let mut val = DatastoreValue::default();
-        val.string(string_value);
-        return val;
-    }
-}
-
-impl From<bool> for DatastoreValue {
-    fn from(bool_value: bool) -> DatastoreValue {
-        let mut val = DatastoreValue::default();
-        val.boolean(bool_value);
-        return val;
-    }
-}
-
-impl From<i64> for DatastoreValue {
-    fn from(int_value: i64) -> DatastoreValue {
-        let mut val = DatastoreValue::default();
-        val.integer(int_value);
-        return val;
+impl Display for DatastoreEntity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self.0)
     }
 }

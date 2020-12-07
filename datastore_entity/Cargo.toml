@@ -11,3 +11,14 @@ google_api_auth = { git = "https://github.com/google-apis-rs/generator" }
 gcp_auth = "0.3.2"
 tokio = { version = "0.2.21", features = ["full"] }
 datastore_entity_derives = { path = "../datastore_entity_derives" }
+
+[dev-dependencies]
+rand = "0.7.3"
+
+[features]
+# no features by default
+default = []
+
+# Add feature "foo" here, then you can use it. 
+# Our "foo" feature depends on nothing else.
+integration_tests = []
