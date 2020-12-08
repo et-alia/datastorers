@@ -14,6 +14,8 @@ use google_datastore1::schemas::{
     Value, QueryResultBatchMoreResults
 };
 
+use std::convert::TryInto;
+
 #[derive(Error, Debug)]
 pub enum DatastoreClientError {
     #[error("entity not found")]
@@ -68,10 +70,7 @@ pub fn get_one_by_id(
                 0 => Err(DatastoreClientError::NotFound)?,
                 1 => {
                     if let Some(entity) = found.remove(0).entity {
-                        let entity_properties = entity.properties.ok_or(DatastoreParseError::NoProperties)?;
-                        let props = DatastoreProperties::from_map(entity_properties);
-                        let result = DatastoreEntity::from(entity.key, props);
-
+                        let result: DatastoreEntity = entity.try_into()?;
                         Ok(result)
                     } else {
                         Err(DatastoreClientError::NotFound)?
@@ -131,10 +130,7 @@ where
                     0 => Err(DatastoreClientError::NotFound)?,
                     1 => {
                         if let Some(entity) = found.remove(0).entity {
-                            let entity_properties = entity.properties.ok_or(DatastoreParseError::NoProperties)?;
-                            let props = DatastoreProperties::from_map(entity_properties);
-                            let result = DatastoreEntity::from(entity.key, props);
-    
+                            let result: DatastoreEntity = entity.try_into()?;
                             Ok(result)
                         } else {
                             Err(DatastoreClientError::NotFound)?
@@ -177,16 +173,10 @@ pub fn commit_one(
     );
     let begin_transaction: BeginTransactionResponse = builder.execute()?;
     let is_insert = !entity.has_key();
-    let key = entity
-        .key()
-        .unwrap_or_else(|| -> Key { generate_empty_key(kind) });
-    let properties: DatastoreProperties = DatastoreProperties::from(entity)
-        .ok_or(DatastoreParseError::NoProperties)?;
-
-    let ent = Entity {
-        key: Some(key),
-        properties: Some(properties.into_map()),
-    };
+    let mut ent: Entity = entity.try_into()?;
+    if !ent.key.is_some() {
+        ent.key = Some(generate_empty_key(kind));
+    }
 
     let mut mutation = Mutation::default();
     if is_insert {

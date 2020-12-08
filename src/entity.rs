@@ -3,6 +3,8 @@ use thiserror::Error;
 
 use std::collections::BTreeMap;
 use std::convert::From;
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
@@ -111,10 +113,6 @@ impl DatastoreProperties {
         DatastoreProperties(BTreeMap::<String, Value>::new())
     }
 
-    pub fn from(entity: DatastoreEntity) -> Option<DatastoreProperties> {
-        Some(DatastoreProperties(entity.0.properties?))
-    }
-
     pub fn from_map(map: BTreeMap<String, Value>) -> DatastoreProperties {
         DatastoreProperties(map)
     }
@@ -177,6 +175,17 @@ impl DatastoreProperties {
     }
 }
 
+impl TryFrom<DatastoreEntity> for DatastoreProperties {
+    type Error = DatastoreParseError;
+
+    fn try_from(entity: DatastoreEntity) -> Result<Self, Self::Error> {
+        match entity.0.properties {
+            Some(properties) => Ok(DatastoreProperties(properties)),
+            None => Err(DatastoreParseError::NoProperties)
+        }
+    }
+}
+
 //
 // DatastoreEntity
 //
@@ -207,5 +216,29 @@ impl DatastoreEntity {
 impl Display for DatastoreEntity {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:#?}", self.0)
+    }
+}
+
+impl TryFrom<Entity> for DatastoreEntity {
+    type Error = DatastoreParseError;
+
+    fn try_from(entity: Entity) -> Result<Self, Self::Error> {
+        let entity_properties = entity.properties.ok_or(DatastoreParseError::NoProperties)?;
+        let props = DatastoreProperties::from_map(entity_properties);
+        Ok(DatastoreEntity::from(entity.key, props))
+    }
+}
+
+impl TryFrom<DatastoreEntity> for Entity {
+    type Error = DatastoreParseError;
+
+    fn try_from(entity: DatastoreEntity) -> Result<Self, Self::Error> {
+        let key = entity.key();
+        let properties: DatastoreProperties = entity.try_into()?;
+
+        Ok(Entity {
+            key: key,
+            properties: Some(properties.into_map()),
+        })
     }
 }

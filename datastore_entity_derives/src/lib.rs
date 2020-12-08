@@ -271,8 +271,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
 
             fn try_from(mut entity: datastore_entity::DatastoreEntity) -> Result<Self, Self::Error> {
                 let key = entity.key();
-                let mut properties = datastore_entity::DatastoreProperties::from(entity)
-                    .ok_or_else(|| datastore_entity::DatastoreParseError::NoProperties)?;
+                let mut properties = datastore_entity::DatastoreProperties::try_from(entity)?;
                 Ok(
                     #name {
                         #key_field_expr: key,
