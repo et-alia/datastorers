@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 google-datastore1 = { git = "https://github.com/bes/google-datastore1-generated" }
-gcp_auth = "0.3.2"
 google_api_auth = { git = "https://github.com/google-apis-rs/generator" }
+gcp_auth = "0.3.2"
+tokio = { version = "0.2.21", features = ["full"] }
 datastore_entity_derives = { path = "../datastore_entity_derives" }
