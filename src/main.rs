@@ -1,8 +1,6 @@
-use datastore_entity::{DatastoreEntity, DatastoreProperties, DatastoreManaged};
-use datastore_entity::DatastoreFetch;
+use datastore_entity::{DatastoreEntity, DatastoreManaged};
 
-use google_datastore1::Client;
-use google_datastore1::schemas::{Key, PathElement, LookupRequest, LookupResponse};
+use google_datastore1::schemas::Key;
 
 use gcp_auth::{Error as GCPAuthError, Token};
 use google_api_auth::GetAccessToken;
@@ -11,7 +9,6 @@ use std::convert::TryInto;
 use std::error::Error;
 
 // TODO - move from here to an integation test + make em configurable
-static TEST_KEY: &str = "./test-key.json";
 static TEST_PROJECT_NAME: &str = "hugop-238317";
 
 
