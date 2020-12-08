@@ -29,7 +29,19 @@ struct FieldMeta {
     entity_getter: Option<EntityGetter>,
 }
 
-#[proc_macro_derive(DatastoreManaged, attributes(kind, key))]
+
+fn generate_entity_getter(indexed: bool, property_type: &str, key: &String) -> Option<EntityGetter> {
+    if indexed {
+        Some(EntityGetter{
+            key_type: parse_expr("String"),
+            get_one_method_name: parse_expr(&format!("get_one_by_{}", key)),
+        })
+    } else {
+        None
+    }
+}
+
+#[proc_macro_derive(DatastoreManaged, attributes(kind, key, indexed))]
 pub fn datastore_managed(input: TokenStream) -> TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
 
@@ -57,6 +69,8 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             }
 
             for ref field in vdata.fields.iter() {
+                let mut indexed: bool = false;
+
                 for ref attr in &field.attrs {
                     match attr.parse_meta().unwrap() {
                         syn::Meta::Path(ref path) => {
@@ -64,6 +78,9 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                                 "key" => {
                                     key_field = Some(field.ident.as_ref().unwrap().clone().to_string());
                                 },
+                                "indexed" => {
+                                    indexed = true;
+                                }
                                 _ => (),
                             }
                         },
@@ -83,10 +100,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                                     key: parse_expr(&format!("\"{}\"", key)),
                                     into_property: parse_expr(&into_property_expr_string),
                                     from_property: parse_expr(&from_property_expr_string),
-                                    entity_getter: Some(EntityGetter{
-                                        key_type: parse_expr("String"),
-                                        get_one_method_name: parse_expr(&format!("get_one_by_{}", key)),
-                                    }),
+                                    entity_getter: generate_entity_getter(indexed, "String", &key),
                                 });
                             },
                             "i64" => {
@@ -97,10 +111,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                                     key: parse_expr(&format!("\"{}\"", key)),
                                     into_property: parse_expr(&into_property_expr_string),
                                     from_property: parse_expr(&from_property_expr_string),
-                                    entity_getter: Some(EntityGetter{
-                                        key_type: parse_expr("i64"),
-                                        get_one_method_name: parse_expr(&format!("get_one_by_{}", key)),
-                                    }),
+                                    entity_getter: generate_entity_getter(indexed, "i64", &key),
                                 });
                             },
                             "bool" => {
@@ -111,10 +122,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                                     key: parse_expr(&format!("\"{}\"", key)),
                                     into_property: parse_expr(&into_property_expr_string),
                                     from_property: parse_expr(&from_property_expr_string),
-                                    entity_getter: Some(EntityGetter{
-                                        key_type: parse_expr("bool"),
-                                        get_one_method_name: parse_expr(&format!("get_one_by_{}", key)),
-                                    }),
+                                    entity_getter: generate_entity_getter(indexed, "bool", &key),
                                 });
                             },
                             _ => (), // Ignore
@@ -142,8 +150,14 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
     let self_key_field_expr = parse_expr(&format!("self.{}.as_ref()", key_field_str));
     let entity_key_field_expr = parse_expr(&format!("entity.{}", key_field_str));
 
-    let entity_getters = fields.iter().map(|f| f.entity_getter.as_ref().unwrap().get_one_method_name.clone()).collect::<Vec<_>>();
-    let entity_getter_key_types = fields.iter().map(|f| f.entity_getter.as_ref().unwrap().key_type.clone()).collect::<Vec<_>>();
+    let entity_getters = fields.iter()
+        .filter(|f| f.entity_getter.is_some())
+        .map(|f| f.entity_getter.as_ref().unwrap().get_one_method_name.clone())
+        .collect::<Vec<_>>();
+    let entity_getter_key_types = fields.iter()
+        .filter(|f| f.entity_getter.is_some())
+        .map(|f| f.entity_getter.as_ref().unwrap().key_type.clone())
+        .collect::<Vec<_>>();
     let kind_strs = repeat(kind_str.clone());
     let names = repeat(name);
 
