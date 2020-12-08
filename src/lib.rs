@@ -39,14 +39,11 @@ pub enum DatastorersError {
 }
 
 
-pub fn get_one_by_id<T>(
+pub fn get_one_by_id(
     id: i64,
     kind: String,
-    connection: &T
-) -> Result<DatastoreEntity, DatastorersError>
-where
-    T: DatastoreConnection
-{
+    connection: &impl DatastoreConnection
+) -> Result<DatastoreEntity, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
 
@@ -92,14 +89,13 @@ fn get_datastore_value_for_value<K: Into<DatastoreValue>>(value: K) -> Value {
     datastore_value.into()
 }
 
-pub fn get_one_by_property<T, K>(
+pub fn get_one_by_property<K>(
     property_name: String,
     property_value: K,
     kind: String,
-    connection: &T
+    connection: &impl DatastoreConnection
 ) -> Result<DatastoreEntity, DatastorersError>
 where
-    T: DatastoreConnection,
     K: Into<DatastoreValue>
 {
     let client = connection.get_client();
@@ -165,14 +161,11 @@ fn generate_empty_key(kind: String) -> Key {
     }
 }
 
-pub fn commit_one<T>(
+pub fn commit_one(
     entity: DatastoreEntity,
     kind: String,
-    connection: &T
-) -> Result<DatastoreEntity, DatastorersError>
-where
-    T: DatastoreConnection
-{
+    connection: &impl DatastoreConnection
+) -> Result<DatastoreEntity, DatastorersError> {
     let mut result_entity = entity.clone();
     let client = connection.get_client();
     let projects = client.projects();
