@@ -1,57 +1,47 @@
 pub mod connection;
 mod accesstoken;
-pub use crate::connection::DatastoreConnection;
+mod entity;
+pub use crate::entity::{DatastoreEntity, DatastoreProperties, DatastoreValue, DatastoreParseError};
+pub use crate::connection::{DatastoreConnection, ConnectionError};
 
+pub use datastore_entity_derives::DatastoreManaged;
+
+use thiserror::Error;
 use google_datastore1::schemas::{
     BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
     Filter, Key, KindExpression, LookupRequest, LookupResponse, Mutation, PathElement,
     PropertyFilter, PropertyFilterOp, PropertyReference, Query, RunQueryRequest, RunQueryResponse,
     Value,
 };
-use std::collections::BTreeMap;
 
-use std::convert::From;
-use std::fmt::{Display, Formatter};
-use std::ops::Deref;
-
-pub use datastore_entity_derives::DatastoreManaged;
-
-
-#[derive(Debug, Clone)]
-pub struct DatastoreEntity(Entity);
-
-impl DatastoreEntity {
-    pub fn from(key: Option<Key>, properties: DatastoreProperties) -> DatastoreEntity {
-        DatastoreEntity(Entity {
-            key,
-            properties: Some(properties.0),
-        })
-    }
-
-    pub fn key(&self) -> Option<Key> {
-        self.0.key.clone()
-    }
-
-    pub fn has_key(&self) -> bool {
-        self.0.key.is_some()
-    }
-
-    pub fn set_key(&mut self, key: Option<Key>) {
-        self.0.key = key;
-    }
+#[derive(Error, Debug)]
+pub enum DatastoreClientError {
+    #[error("entity not found")]
+    NotFound,
+    #[error("multiple entities found, single result expected")]
+    AmbigiousResult,
+    #[error("failed to assign key to inserted entity")]
+    KeyAssignmentFailed,
 }
 
-impl Display for DatastoreEntity {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:#?}", self.0)
-    }
+#[derive(Error, Debug)]
+pub enum DatastorersError {
+    #[error(transparent)]
+    ConnectionError(#[from] ConnectionError),    
+    #[error(transparent)]
+    ParseError(#[from] DatastoreParseError),
+    #[error(transparent)]
+    DatastoreError(#[from] google_datastore1::Error),
+    #[error(transparent)]
+    DatastoreClientError(#[from] DatastoreClientError)
 }
+
 
 pub fn get_one_by_id<T>(
     id: i64,
     kind: String,
     connection: &T
-) -> Result<DatastoreEntity, String>
+) -> Result<DatastoreEntity, DatastorersError>
 where
     T: DatastoreConnection
 {
@@ -70,23 +60,28 @@ where
         keys: Some(vec![key]),
         read_options: None,
     };
-    let resp: LookupResponse = projects.lookup(req, connection.get_project_name()).execute().map_err(
-        |_e: google_datastore1::Error| -> String { "Failed to fetch entity by id".to_string() },
-    )?;
+    let resp: LookupResponse = projects.lookup(req, connection.get_project_name())
+        .execute()?;
 
     match resp.found {
-        Some(found) => {
-            for f in found {
-                if let Some(entity) = f.entity {
-                    let props = DatastoreProperties::from_map(entity.properties.unwrap());
-                    let result = DatastoreEntity::from(entity.key, props);
+        Some(mut found) => { 
+            match found.len() {
+                0 => Err(DatastoreClientError::NotFound)?,
+                1 => {
+                    if let Some(entity) = found.remove(0).entity {
+                        let entity_properties = entity.properties.ok_or(DatastoreParseError::NoProperties)?;
+                        let props = DatastoreProperties::from_map(entity_properties);
+                        let result = DatastoreEntity::from(entity.key, props);
 
-                    return Ok(result);
-                }
+                        Ok(result)
+                    } else {
+                        Err(DatastoreClientError::NotFound)?
+                    }
+                },
+                _ => Err(DatastoreClientError::AmbigiousResult)?
             }
-            Err("No matching entity found".to_string())
         }
-        None => Err("No matching entity found".to_string()),
+        None => Err(DatastoreClientError::NotFound)?,
     }
 }
 
@@ -100,7 +95,7 @@ pub fn get_one_by_property<T, K>(
     property_value: K,
     kind: String,
     connection: &T
-) -> Result<DatastoreEntity, String>
+) -> Result<DatastoreEntity, DatastorersError>
 where
     T: DatastoreConnection,
     K: Into<DatastoreValue>
@@ -123,26 +118,33 @@ where
     query.limit = Some(1);
     req.query = Some(query);
 
-    let resp: RunQueryResponse = projects.run_query(req, connection.get_project_name()).execute().map_err(
-        |_e: google_datastore1::Error| -> String { "Failed to fetch entity by prop".to_string() },
-    )?;
+    let resp: RunQueryResponse = projects
+        .run_query(req, connection.get_project_name())
+        .execute()?;
 
     match resp.batch {
-        Some(batch) => {
-            // TODO - Validate more results -> ther shall not be any more results!
-            let found = batch.entity_results.unwrap(); // TODO - check before unwrap
-            for f in found {
-                // TODO - Validate legth instead of just returning the first element
-                if let Some(entity) = f.entity {
-                    let props = DatastoreProperties::from_map(entity.properties.unwrap());
-                    let result = DatastoreEntity::from(entity.key, props);
-
-                    return Ok(result);
+        Some(batch) => { 
+            if let Some(mut found) = batch.entity_results {
+                match found.len() {
+                    0 => Err(DatastoreClientError::NotFound)?,
+                    1 => {
+                        if let Some(entity) = found.remove(0).entity {
+                            let entity_properties = entity.properties.ok_or(DatastoreParseError::NoProperties)?;
+                            let props = DatastoreProperties::from_map(entity_properties);
+                            let result = DatastoreEntity::from(entity.key, props);
+    
+                            Ok(result)
+                        } else {
+                            Err(DatastoreClientError::NotFound)?
+                        }
+                    },
+                    _ => Err(DatastoreClientError::AmbigiousResult)?
                 }
+            } else {
+                Err(DatastoreClientError::NotFound)?
             }
-            Err("No matching entity found".to_string())
-        }
-        None => Err("No matching entity found".to_string()),
+        },
+        None => Err(DatastoreClientError::NotFound)?,
     }
 }
 
@@ -161,7 +163,7 @@ pub fn commit_one<T>(
     entity: DatastoreEntity,
     kind: String,
     connection: &T
-) -> Result<DatastoreEntity, String>
+) -> Result<DatastoreEntity, DatastorersError>
 where
     T: DatastoreConnection
 {
@@ -174,21 +176,17 @@ where
         },
         connection.get_project_name(),
     );
-    let begin_transaction: BeginTransactionResponse =
-        builder
-            .execute()
-            .map_err(|_e: google_datastore1::Error| -> String {
-                "Begin transaction request failed".to_string()
-            })?;
+    let begin_transaction: BeginTransactionResponse = builder.execute()?;
     let is_insert = !entity.has_key();
     let key = entity
         .key()
         .unwrap_or_else(|| -> Key { generate_empty_key(kind) });
-    let properties: DatastoreProperties = DatastoreProperties::from(entity).unwrap();
+    let properties: DatastoreProperties = DatastoreProperties::from(entity)
+        .ok_or(DatastoreParseError::NoProperties)?;
 
     let ent = Entity {
         key: Some(key),
-        properties: Some(properties.0),
+        properties: Some(properties.into_map()),
     };
 
     let mut mutation = Mutation::default();
@@ -208,176 +206,24 @@ where
         connection.get_project_name(),
     );
 
-    let cre: CommitResponse =
-        commit_request
-            .execute()
-            .map_err(|_e: google_datastore1::Error| -> String {
-                "Commit transaction failed".to_string()
-            })?;
-    println!("{:#?}", cre);
-
+    let cre: CommitResponse = commit_request.execute()?;
+            
     if is_insert {
         // The commit result shall contain a key that we can assign to the entity in order to later
         // be able to update it
-        let mutation_result = &cre.mutation_results.unwrap()[0]; // TODO - assert length, shall be one! + handle case where res is missing
-        result_entity.set_key(mutation_result.key.clone()); // TODO - clone needed? can I not take ownership?
+        if let Some(results) = &cre.mutation_results {
+            match results.len() {
+                0 => Err(DatastoreClientError::KeyAssignmentFailed)?,
+                1 => {
+                    let mutation_result = &results[0];
+                    result_entity.set_key(mutation_result.key.clone());
+                },
+                _ => Err(DatastoreClientError::AmbigiousResult)?,
+            }
+        } else {
+            Err(DatastoreClientError::KeyAssignmentFailed)?
+        }
     }
 
     Ok(result_entity)
-}
-
-#[derive(Debug)]
-pub enum DatastoreParseError {
-    NoSuchValue,
-    NoProperties,
-}
-
-#[derive(Debug)]
-pub struct DatastoreProperties(BTreeMap<String, Value>);
-
-impl Display for DatastoreProperties {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:#?}", self.0)
-    }
-}
-
-impl DatastoreProperties {
-    pub fn new() -> DatastoreProperties {
-        DatastoreProperties(BTreeMap::<String, Value>::new())
-    }
-
-    pub fn from(entity: DatastoreEntity) -> Option<DatastoreProperties> {
-        Some(DatastoreProperties(entity.0.properties?))
-    }
-
-    pub fn from_map(map: BTreeMap<String, Value>) -> DatastoreProperties {
-        DatastoreProperties(map)
-    }
-
-    pub fn get_string(&mut self, key: &str) -> Result<String, DatastoreParseError> {
-        match self.0.remove(key) {
-            Some(value) => value
-                .string_value
-                .ok_or_else(|| DatastoreParseError::NoSuchValue),
-            None => Err(DatastoreParseError::NoSuchValue),
-        }
-    }
-
-    pub fn set_opt_string(&mut self, key: &str, value: Option<String>) {
-        let mut datastore_value = DatastoreValue::default();
-        if let Some(value) = value {
-            datastore_value.string(value.to_string());
-            self.0.insert(key.to_string(), datastore_value.0);
-        }
-    }
-
-    pub fn set_string(&mut self, key: &str, value: String) {
-        let mut datastore_value = DatastoreValue::default();
-        datastore_value.string(value);
-        self.0.insert(key.to_string(), datastore_value.0);
-    }
-
-    pub fn get_integer(&mut self, key: &str) -> Result<i64, DatastoreParseError> {
-        match self.0.remove(key) {
-            Some(value) => value
-                .integer_value
-                .ok_or_else(|| DatastoreParseError::NoSuchValue),
-            None => Err(DatastoreParseError::NoSuchValue),
-        }
-    }
-
-    pub fn set_integer(&mut self, key: &str, value: i64) {
-        let mut datastore_value = DatastoreValue::default();
-        datastore_value.integer(value);
-        self.0.insert(key.to_string(), datastore_value.0);
-    }
-
-    pub fn get_bool(&mut self, key: &str) -> Result<bool, DatastoreParseError> {
-        match self.0.remove(key) {
-            Some(value) => value
-                .boolean_value
-                .ok_or_else(|| DatastoreParseError::NoSuchValue),
-            None => Err(DatastoreParseError::NoSuchValue),
-        }
-    }
-
-    pub fn set_bool(&mut self, key: &str, value: bool) {
-        let mut datastore_value = DatastoreValue::default();
-        datastore_value.boolean(value);
-        self.0.insert(key.to_string(), datastore_value.0);
-    }
-}
-
-pub struct DatastoreValue(pub Value);
-
-impl Default for DatastoreValue {
-    fn default() -> Self {
-        DatastoreValue(Value {
-            array_value: None,
-            blob_value: None,
-            boolean_value: None,
-            double_value: None,
-            entity_value: None,
-            exclude_from_indexes: None,
-            geo_point_value: None,
-            integer_value: None,
-            key_value: None,
-            meaning: None,
-            null_value: None,
-            string_value: None,
-            timestamp_value: None,
-        })
-    }
-}
-
-impl DatastoreValue {
-    pub fn string(&mut self, s: String) {
-        self.0.string_value = Some(s);
-    }
-
-    pub fn integer(&mut self, i: i64) {
-        self.0.integer_value = Some(i);
-    }
-
-    pub fn boolean(&mut self, b: bool) {
-        self.0.boolean_value = Some(b);
-    }
-}
-
-impl Deref for DatastoreValue {
-    type Target = Value;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<DatastoreValue> for Value {
-    fn from(val: DatastoreValue) -> Value {
-        val.0
-    }
-}
-
-impl From<String> for DatastoreValue {
-    fn from(string_value: String) -> DatastoreValue {
-        let mut val = DatastoreValue::default();
-        val.string(string_value);
-        return val;
-    }
-}
-
-impl From<bool> for DatastoreValue {
-    fn from(bool_value: bool) -> DatastoreValue {
-        let mut val = DatastoreValue::default();
-        val.boolean(bool_value);
-        return val;
-    }
-}
-
-impl From<i64> for DatastoreValue {
-    fn from(int_value: i64) -> DatastoreValue {
-        let mut val = DatastoreValue::default();
-        val.integer(int_value);
-        return val;
-    }
 }

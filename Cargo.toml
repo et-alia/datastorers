@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 datastore_entity = { path = "datastore_entity" }
+google-datastore1 = { git = "https://github.com/bes/google-datastore1-generated" }

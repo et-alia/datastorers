@@ -235,33 +235,26 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #self_key_field_expr
             }
 
-            pub fn get_one_by_id<T>(id: i64, connection: &T) -> Result<#name, String>
+            pub fn get_one_by_id<T>(id: i64, connection: &T) -> Result<#name, datastore_entity::DatastorersError>
                 where T: datastore_entity::DatastoreConnection
             {
                 let datastoreEntity = datastore_entity::get_one_by_id(id, #kind_str.to_string(), connection)?;
                 let result: #name = datastoreEntity
-                    .try_into()
-                    .map_err(|_e: <#name as std::convert::TryFrom<DatastoreEntity>>::Error| -> String {"Failed to fetch entity".to_string()})
-                    .unwrap();
+                    .try_into()?;
                 return Ok(result)
             }
             #(
-                pub fn #entity_getters<T>(value: #entity_getter_key_types, connection: &T) -> Result<#name, String>
+                pub fn #entity_getters<T>(value: #entity_getter_key_types, connection: &T) -> Result<#name, datastore_entity::DatastorersError>
                     where T: datastore_entity::DatastoreConnection
                 {
                     let datastoreEntity = datastore_entity::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection)?;
                     let result: #name = datastoreEntity
-                        .try_into()
-                        .map_err(|e: <#name as std::convert::TryFrom<DatastoreEntity>>::Error| -> String {
-                            println!("Error fetching data {:?}", e);
-                            return "Failed to fetch entity".to_string();
-                        })
-                        .unwrap();
+                        .try_into()?;
                     return Ok(result)
                 }
             )*
 
-            pub fn commit<T>(self, connection: &T) -> Result<#name, String>
+            pub fn commit<T>(self, connection: &T) -> Result<#name, datastore_entity::DatastorersError>
                 where T: datastore_entity::DatastoreConnection
             {
                 let result_entity = datastore_entity::commit_one(
@@ -270,8 +263,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                     connection
                 )?;
                 let result: #name = result_entity
-                    .try_into()
-                    .unwrap();
+                    .try_into()?;
                 return Ok(result)
             }
 
