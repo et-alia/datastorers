@@ -2,7 +2,7 @@ use datastore_entity::{DatastoreEntity, DatastoreManaged};
 use std::convert::TryInto;
 use google_datastore1::schemas::Key;
 
-#[derive(DatastoreManaged, Clone, Debug)]
+#[derive(DatastoreManaged, Clone, Debug, Default)]
 #[kind = "thingy"]
 pub struct Thing {
     #[key]
@@ -12,6 +12,17 @@ pub struct Thing {
     pub prop_boolean: bool,
 }
 
+
+#[test]
+fn get_generated_properties() {
+    let thing = Thing::default();
+
+    assert_eq!("thingy", thing.kind());
+    assert_eq!(None, thing.id());
+}
+
+
+
 #[test]
 fn into_datastore_entity_and_back() {
     let thing = Thing {
@@ -20,9 +31,6 @@ fn into_datastore_entity_and_back() {
         prop_integer: 777,
         prop_boolean: false,
     };
-
-    assert_eq!("thingy", thing.kind());
-    assert_eq!(None, thing.id());
 
     let entity: DatastoreEntity = thing.clone().into();
 
@@ -34,8 +42,4 @@ fn into_datastore_entity_and_back() {
     assert_eq!(777, thing_is_back.prop_integer);
     assert_eq!(thing.prop_boolean, thing_is_back.prop_boolean);
     assert_eq!(false, thing_is_back.prop_boolean);
-}
-
-pub fn main() {
-    println!("These are not the droids you are looking for")
 }

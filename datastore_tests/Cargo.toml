@@ -1,9 +1,0 @@
-[package]
-name = "datastore_tests"
-version = "0.0.1"
-authors = ["Andreas Pålsson <a.palsson@gmail.com>", "Erik Zivkovic <erik@zivkovic.se>"]
-edition = "2018"
-
-[dependencies]
-google-datastore1 = { git = "https://github.com/bes/google-datastore1-generated" }
-datastore_entity = { path = "../datastore_entity" }

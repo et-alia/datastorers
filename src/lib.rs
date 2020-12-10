@@ -11,7 +11,7 @@ use google_datastore1::schemas::{
     BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
     Filter, Key, KindExpression, LookupRequest, LookupResponse, Mutation, PathElement,
     PropertyFilter, PropertyFilterOp, PropertyReference, Query, RunQueryRequest, RunQueryResponse,
-    Value,
+    Value, QueryResultBatchMoreResults
 };
 
 #[derive(Error, Debug)]
@@ -22,6 +22,8 @@ pub enum DatastoreClientError {
     AmbigiousResult,
     #[error("failed to assign key to inserted entity")]
     KeyAssignmentFailed,
+    #[error("Unexpected response data")]
+    ApiDataError,
 }
 
 #[derive(Error, Debug)]
@@ -124,6 +126,10 @@ where
 
     match resp.batch {
         Some(batch) => { 
+            let more_results = batch.more_results.ok_or(DatastoreClientError::ApiDataError)?;
+            if more_results != QueryResultBatchMoreResults::NoMoreResults {
+                Err(DatastoreClientError::AmbigiousResult)?
+            }
             if let Some(mut found) = batch.entity_results {
                 match found.len() {
                     0 => Err(DatastoreClientError::NotFound)?,
