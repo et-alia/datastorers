@@ -1,4 +1,4 @@
-use google_datastore1::schemas::{Entity, Key, Value};
+use google_datastore1::schemas::{ArrayValue, Entity, Key, Value};
 use thiserror::Error;
 
 use std::collections::BTreeMap;
@@ -17,6 +17,8 @@ pub enum DatastoreParseError {
     NoSuchValue,
     #[error("no properties found on entity")]
     NoProperties,
+    #[error("unexpected type in array item")]
+    InvalidArrayValueFormat,
 }
 
 //
@@ -55,6 +57,10 @@ impl DatastoreValue {
 
     pub fn boolean(&mut self, b: bool) {
         self.0.boolean_value = Some(b);
+    }
+
+    pub fn array(&mut self, a: Vec<Value>) {
+        self.0.array_value = Some(ArrayValue { values: Some(a) });
     }
 }
 
@@ -96,6 +102,24 @@ impl From<i64> for DatastoreValue {
     }
 }
 
+impl From<Vec<String>> for DatastoreValue {
+    fn from(str_vec_value: Vec<String>) -> DatastoreValue {
+        fn generate_string_value(str_val: String) -> Value {
+            let mut val = DatastoreValue::default();
+            val.string(str_val);
+            val.0
+        }
+        let mut array_val = DatastoreValue::default();
+        array_val.array(
+            str_vec_value
+                .into_iter()
+                .map(|s| generate_string_value(s))
+                .collect(),
+        );
+        return array_val;
+    }
+}
+
 //
 // DatastoreProperties
 //
@@ -127,14 +151,6 @@ impl DatastoreProperties {
                 .string_value
                 .ok_or_else(|| DatastoreParseError::NoSuchValue),
             None => Err(DatastoreParseError::NoSuchValue),
-        }
-    }
-
-    pub fn set_opt_string(&mut self, key: &str, value: Option<String>) {
-        let mut datastore_value = DatastoreValue::default();
-        if let Some(value) = value {
-            datastore_value.string(value.to_string());
-            self.0.insert(key.to_string(), datastore_value.0);
         }
     }
 
@@ -173,6 +189,30 @@ impl DatastoreProperties {
         datastore_value.boolean(value);
         self.0.insert(key.to_string(), datastore_value.0);
     }
+
+    pub fn get_string_array(&mut self, key: &str) -> Result<Vec<String>, DatastoreParseError> {
+        match self.0.remove(key) {
+            Some(value) => match value.array_value {
+                Some(array_value) => match array_value.values {
+                    Some(values) => values
+                        .into_iter()
+                        .map(|v| {
+                            v.string_value
+                                .ok_or_else(|| DatastoreParseError::InvalidArrayValueFormat)
+                        })
+                        .collect(),
+                    None => Ok(vec![]), // Empty array
+                },
+                None => Err(DatastoreParseError::NoSuchValue),
+            },
+            None => Err(DatastoreParseError::NoSuchValue),
+        }
+    }
+
+    pub fn set_string_array(&mut self, key: &str, value: Vec<String>) {
+        let datastore_value: DatastoreValue = value.into();
+        self.0.insert(key.to_string(), datastore_value.0);
+    }
 }
 
 impl TryFrom<DatastoreEntity> for DatastoreProperties {
@@ -181,7 +221,7 @@ impl TryFrom<DatastoreEntity> for DatastoreProperties {
     fn try_from(entity: DatastoreEntity) -> Result<Self, Self::Error> {
         match entity.0.properties {
             Some(properties) => Ok(DatastoreProperties(properties)),
-            None => Err(DatastoreParseError::NoProperties)
+            None => Err(DatastoreParseError::NoProperties),
         }
     }
 }
