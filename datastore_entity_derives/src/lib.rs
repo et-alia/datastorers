@@ -16,6 +16,7 @@ struct EntityGetter {
     // Property type
     property_type: Expr,
     get_one_method_name: Expr,
+    get_method_name: Expr,
 }
 
 struct FieldMeta {
@@ -67,6 +68,7 @@ fn build_field_meta(
         true => Some(EntityGetter {
             property_type: parse_expr(getter_value_type),
             get_one_method_name: parse_expr(&format!("get_one_by_{}", struct_property_name)),
+            get_method_name: parse_expr(&format!("get_by_{}", struct_property_name)),
             datastore_property: parse_expr(&format!("\"{}\"", datastore_property_name)),
         }),
         false => None,
@@ -235,6 +237,17 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 .clone()
         })
         .collect::<Vec<_>>();
+    let entity_collection_getters = fields
+        .iter()
+        .filter(|f| f.entity_getter.is_some())
+        .map(|f| {
+            f.entity_getter
+                .as_ref()
+                .unwrap()
+                .get_method_name
+                .clone()
+        })
+        .collect::<Vec<_>>();
     let entity_getter_key_types = fields
         .iter()
         .filter(|f| f.entity_getter.is_some())
@@ -268,6 +281,16 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 {
                     let datastore_entity = datastore_entity::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection)?;
                     let result: #name = datastore_entity
+                        .try_into()?;
+                    return Ok(result)
+                }
+            )*
+
+            #(
+                pub fn #entity_collection_getters(value: #entity_getter_key_types, connection: &impl datastore_entity::DatastoreConnection) -> Result<datastore_entity::ResultCollection<#name>, datastore_entity::DatastorersError>
+                {
+                    let entities = datastore_entity::get_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection)?;
+                    let result: datastore_entity::ResultCollection<#name> = entities
                         .try_into()?;
                     return Ok(result)
                 }
@@ -319,7 +342,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                     properties,
                 )
             }
-        }
+        }        
     };
 
     TokenStream::from(tokens)

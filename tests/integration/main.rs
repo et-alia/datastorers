@@ -200,6 +200,77 @@ fn test_get_by_property() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_get_collection_by_property() {
+    let page_size = 2;
+    let connection = create_test_connection();
+
+    // Create some entities (5 of them, that is enough for this test since page size in test build is 2)
+    let common_string_prop = generate_random_string(15);
+    let mut int_props = vec![]; // Save all upserted int props so we can validate the result later
+    let mut fetched_int_props = vec![];
+    for _ in 0..5 {
+        let mut entity = generate_random_entity();
+        entity.prop_string = common_string_prop.clone();
+        let inserted = insert_entity(entity, &connection);
+        int_props.push(inserted.prop_int);
+    }
+
+    // Fetch first page
+    let page = match TestEntity::get_by_prop_string(common_string_prop, &connection) {
+        Ok(p) => p,
+        Err(e) => panic!("Failed to fetch page {:#?}", e),
+    };
+    // Validate it
+    assert_eq!(page.result.len(), page_size);
+    assert!(page.has_more_results);
+    for val in page.result.iter() {
+        fetched_int_props.push(val.prop_int);
+    }
+
+    // Fetch next page
+    let page_two = match page.get_next_page(&connection) {
+        Ok(p) => p,
+        Err(e) => panic!("Failed to fetch page {:#?}", e),
+    };
+    // Validate it
+    assert_eq!(page_two.result.len(), page_size);
+    assert!(page_two.has_more_results);
+    for val in page_two.result.iter() {
+        fetched_int_props.push(val.prop_int);
+    }
+
+    // Fetch last page
+    let last_page = match page_two.get_next_page(&connection) {
+        Ok(p) => p,
+        Err(e) => panic!("Failed to fetch page {:#?}", e),
+    };
+
+    assert_eq!(last_page.result.len(), 1); // Shall now only be one item!
+    assert!(!last_page.has_more_results); // Shall now not have any more results!
+    for val in last_page.result.iter() {
+        fetched_int_props.push(val.prop_int);
+    }
+
+    // Try to fetch one more page (shall fail)
+    match last_page.get_next_page(&connection) {
+        Ok(_) => panic!("expect a failure result"),
+        Err(e) => match e {
+            DatastorersError::DatastoreClientError(client_error) => {
+                match client_error {
+                    DatastoreClientError::NoMorePages => {} // Success!
+                    _ => panic!("Expected no more pages error"),
+                }
+            },
+            _ => panic!("Expected DatastoreClientError"),
+        }
+    }
+
+    // Compare the two int arrays to validate that all inserted items have been fetched
+    assert_eq!(fetched_int_props.sort(), int_props.sort());
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_update_property() {
     let connection = create_test_connection();
 

@@ -1,4 +1,4 @@
-use google_datastore1::schemas::{ArrayValue, Entity, Key, Value};
+use google_datastore1::schemas::{ArrayValue, Entity, Key, Value, Query};
 use thiserror::Error;
 
 use std::collections::BTreeMap;
@@ -279,6 +279,73 @@ impl TryFrom<DatastoreEntity> for Entity {
         Ok(Entity {
             key: key,
             properties: Some(properties.into_map()),
+        })
+    }
+}
+
+//
+// Datastore entity collections are used to wrap query results that may be paged
+//
+pub struct DatastoreEntityCollection {
+    entities: Vec<DatastoreEntity>,
+    query: Option<Query>,
+    end_cursor: Option<String>,
+    has_more_results: bool,
+}
+
+
+impl Default for DatastoreEntityCollection {
+    fn default() -> Self {
+        DatastoreEntityCollection {
+            entities: vec![],
+            query: None,
+            end_cursor: None,
+            has_more_results: false,
+        }
+    }
+}
+
+
+
+impl DatastoreEntityCollection {
+    pub fn from_result(
+        entities: Vec<DatastoreEntity>,
+        query: Query,
+        end_cursor: String,
+        has_more_results: bool
+    ) -> DatastoreEntityCollection {
+        DatastoreEntityCollection {
+            entities,
+            query: Some(query),
+            end_cursor: Some(end_cursor),
+            has_more_results,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ResultCollection<T> {
+    pub result: Vec<T>,
+    pub query: Option<Query>,
+    pub end_cursor: Option<String>,
+    pub has_more_results: bool,
+}
+
+impl<T> TryFrom<DatastoreEntityCollection> for ResultCollection<T> 
+where
+    T: TryFrom<DatastoreEntity, Error = DatastoreParseError>
+{
+    type Error = DatastoreParseError;
+
+    fn try_from(collection: DatastoreEntityCollection) -> Result<Self, Self::Error> {
+        let result_items: Vec<T> = collection.entities.into_iter()
+            .map(T::try_from)
+            .collect::<Result<Vec<T>, DatastoreParseError>>()?;
+        Ok(ResultCollection {
+            result: result_items,
+            query: collection.query,
+            end_cursor: collection.end_cursor,
+            has_more_results: collection.has_more_results,
         })
     }
 }
