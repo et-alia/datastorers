@@ -285,6 +285,10 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 return Ok(result)
             }
 
+            pub fn delete(self, connection: &impl datastore_entity::DatastoreConnection) -> Result<(), datastore_entity::DatastorersError>
+            {
+                datastore_entity::delete_one(self.into(), connection)
+            }
         }
 
         impl core::convert::TryFrom<datastore_entity::DatastoreEntity> for #name {

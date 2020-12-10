@@ -73,6 +73,16 @@ fn generate_random_entity() -> TestEntity {
     }
 }
 
+fn insert_random_entity(connection: &Connection) -> TestEntity {
+    insert_entity(generate_random_entity(), connection)
+}
+
+fn insert_entity(entity: TestEntity, connection: &Connection) -> TestEntity {
+    match entity.commit(connection) {
+        Ok(e) => e,
+        Err(e) => panic!("Failed to insert entity: {}", e),
+    }
+}
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
@@ -81,10 +91,7 @@ fn test_insert_and_update() {
     let original_entity = generate_random_entity();
     let original_bool_value = original_entity.prop_bool;
 
-    let mut test_entity = match original_entity.commit(&connection) {
-        Ok(e) => e,
-        Err(e) => panic!("Failed to insert entity: {}", e),
-    };
+    let mut test_entity = insert_entity(original_entity, &connection);
     assert!(test_entity.key.is_some());
     // Save id for later validations
     let id_after_insert = test_entity.id().unwrap().clone();
@@ -113,10 +120,7 @@ fn test_get_by_id() {
     let original_string = entity.prop_string.clone();
     let original_int = entity.prop_int.clone();
     
-    let inserted = match entity.commit(&connection) {
-        Ok(e) => e,
-        Err(e) => panic!("Failed to insert entity: {}", e),
-    };
+    let inserted = insert_entity(entity, &connection);
 
     // Try fetch with a random id, to validate that not found check works
     let random_id = generate_random_int();
@@ -151,19 +155,10 @@ fn test_get_by_property() {
     let connection = create_test_connection();
 
     // Save 3 entities, 2 with the same name
-    let expected_result_entity = match generate_random_entity().commit(&connection) {
-        Ok(e) => e,
-        Err(e) => panic!("Failed to insert entity: {}", e),
-    };
+    let expected_result_entity = insert_random_entity(&connection);
     let duplicated_entity = generate_random_entity();
-    match duplicated_entity.clone().commit(&connection) {
-        Ok(_) => (),
-        Err(e) => panic!("Failed to insert entity: {}", e),
-    };
-    match duplicated_entity.clone().commit(&connection) {
-        Ok(_) => (),
-        Err(e) => panic!("Failed to insert entity: {}", e),
-    };
+    insert_entity(duplicated_entity.clone(), &connection);
+    insert_entity(duplicated_entity.clone(), &connection);
 
     assert_ne!(expected_result_entity.prop_int, duplicated_entity.prop_int);
 
@@ -210,10 +205,7 @@ fn test_update_property() {
 
     // Create and insert
     let original = generate_random_entity();    
-    let inserted = match original.clone().commit(&connection) {
-        Ok(e) => e,
-        Err(e) => panic!("Failed to insert entity: {}", e),
-    };
+    let inserted = insert_entity(original.clone(), &connection);
 
     // Get by prop, shall be same key as created
     let mut fetched = match TestEntity::get_one_by_prop_string(original.prop_string.clone(), &connection) {
@@ -270,14 +262,8 @@ fn test_get_by_array_property() {
     entity_b.prop_string_array = vec![string_value_b.clone(), string_value_c.clone()];
 
     // Insert
-    let inserted_a = match entity_a.commit(&connection) {
-        Ok(e) => e,
-        Err(e) => panic!("Failed to insert entity: {}", e),
-    };
-    let inserted_b = match entity_b.commit(&connection) {
-        Ok(e) => e,
-        Err(e) => panic!("Failed to insert entity: {}", e),
-    };
+    let inserted_a = insert_entity(entity_a, &connection);
+    let inserted_b = insert_entity(entity_b, &connection);
 
     // Fetch for string_value_a => shall return entity_a
     let fetched_entity = match TestEntity::get_one_by_prop_string_array(string_value_a, &connection) {
@@ -324,10 +310,7 @@ fn test_update_array_property() {
     entity.prop_string_array = vec![string_value_a.clone(), string_value_b.clone()];
     
     // Insert
-    let mut inserted = match entity.commit(&connection) {
-        Ok(e) => e,
-        Err(e) => panic!("Failed to insert entity: {}", e),
-    };
+    let mut inserted = insert_entity(entity, &connection);
     let inserted_key = inserted.key.clone();
 
     // Fetch for string_value_a => shall return entity
@@ -395,4 +378,51 @@ fn test_update_array_property() {
         Err(e) => panic!("Failed to fetch entity: {}", e),
     };
     assert_eq!(&inserted_key, &fetched_entity.key);
+}
+
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_delete() {
+    let connection = create_test_connection();
+
+    let inserted_a = insert_random_entity(&connection);
+    let inserted_b = insert_random_entity(&connection);
+
+    // Both shall be fetchable
+    match TestEntity::get_one_by_prop_string(inserted_a.prop_string.clone(), &connection) {
+        Ok(e) => assert_eq!(&inserted_a.key, &e.key),
+        Err(e) => panic!("Failed to fetch entity: {}", e),
+    };
+    
+    match TestEntity::get_one_by_prop_string(inserted_b.prop_string.clone(), &connection) {
+        Ok(e) => assert_eq!(&inserted_b.key, &e.key),
+        Err(e) => panic!("Failed to fetch entity: {}", e),
+    };
+
+    // Delete one
+    let prop_string_b = inserted_b.prop_string.clone();
+    match inserted_b.delete(&connection) {
+        Ok(_) => {},
+        Err(e) => panic!("Failed to fetch entity: {}", e),
+    }
+
+    // Only entity_a shall be fetchable
+    match TestEntity::get_one_by_prop_string(inserted_a.prop_string.clone(), &connection) {
+        Ok(e) => assert_eq!(&inserted_a.key, &e.key),
+        Err(e) => panic!("Failed to fetch entity: {}", e),
+    };
+    
+    match TestEntity::get_one_by_prop_string(prop_string_b, &connection) {
+        Ok(_) => panic!("expect no entity to be found"),
+        Err(e) => match e {
+            DatastorersError::DatastoreClientError(client_error) => {
+                match client_error {
+                    DatastoreClientError::NotFound => {} // Success!
+                    _ => panic!("Expected not found error"),
+                }
+            },
+            _ => panic!("Expected DatastoreClientError"),
+        }
+    };
 }
