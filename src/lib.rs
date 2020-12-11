@@ -17,6 +17,7 @@ use google_datastore1::schemas::{
 use std::convert::TryInto;
 use std::convert::TryFrom;
 
+const DEFAULT_PAGE_SIZE: i32 = 50;
 #[derive(Error, Debug)]
 pub enum DatastoreClientError {
     #[error("entity not found")]
@@ -97,7 +98,7 @@ fn build_query_from_property(
     property_name: String,
     property_value: impl Into<DatastoreValue>,
     kind: String,
-    limit: Option<i32>,
+    limit: i32,
 ) -> Query {
     let mut filter = Filter::default();
     filter.property_filter = Some(PropertyFilter {
@@ -110,7 +111,7 @@ fn build_query_from_property(
     let mut query = Query::default();
     query.kind = Some(vec![KindExpression { name: Some(kind) }]);
     query.filter = Some(filter);
-    query.limit = limit;
+    query.limit = Some(limit);
 
     return query;
 }
@@ -128,7 +129,7 @@ pub fn get_one_by_property(
         property_name,
         property_value,
         kind,
-        Some(1),
+        1,
     ));
 
     let resp: RunQueryResponse = projects
@@ -206,13 +207,14 @@ pub fn get_by_property(
     property_name: String,
     property_value: impl Into<DatastoreValue>,
     kind: String,
+    limit: Option<i32>,
     connection: &impl DatastoreConnection
 ) -> Result<DatastoreEntityCollection, DatastorersError> {
     let query = build_query_from_property(
         property_name,
         property_value,
         kind,
-        Some(2) // TODO - update, but maybe make it depend on test env
+        limit.unwrap_or(DEFAULT_PAGE_SIZE)
     );
     get_page(query, connection)
 }

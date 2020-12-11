@@ -81,12 +81,13 @@ fn build_field_meta(
     }
 }
 
-#[proc_macro_derive(DatastoreManaged, attributes(kind, key, indexed, property))]
+#[proc_macro_derive(DatastoreManaged, attributes(kind, key, indexed, property, page_size))]
 pub fn datastore_managed(input: TokenStream) -> TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
 
     let mut kind: Option<String> = None;
     let mut key_field: Option<String> = None;
+    let mut page_size: Expr = parse_expr("None");
 
     let fields: Vec<FieldMeta> = match ast.data {
         Data::Struct(vdata) => {
@@ -100,7 +101,12 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                                 if let Lit::Str(lit_str) = name_value.lit.clone() {
                                     kind = Some(lit_str.value());
                                 }
-                            }
+                            },
+                            "page_size" => {
+                                if let Lit::Int(lit_int) = name_value.lit.clone() {
+                                    page_size = parse_expr(&format!("Some({})", lit_int));
+                                }
+                            },
                             _ => (),
                         }
                     }
@@ -119,10 +125,10 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                                 "key" => {
                                     key_field =
                                         Some(field.ident.as_ref().unwrap().clone().to_string());
-                                }
+                                },
                                 "indexed" => {
                                     indexed = true;
-                                }
+                                },
                                 _ => (),
                             }
                         }
@@ -289,7 +295,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             #(
                 pub fn #entity_collection_getters(value: #entity_getter_key_types, connection: &impl datastore_entity::DatastoreConnection) -> Result<datastore_entity::ResultCollection<#name>, datastore_entity::DatastorersError>
                 {
-                    let entities = datastore_entity::get_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection)?;
+                    let entities = datastore_entity::get_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), #page_size, connection)?;
                     let result: datastore_entity::ResultCollection<#name> = entities
                         .try_into()?;
                     return Ok(result)

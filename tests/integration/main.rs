@@ -10,6 +10,7 @@ use std::env;
 
 #[derive(DatastoreManaged, Clone, Debug)]
 #[kind = "Test"]
+#[page_size = 2]
 pub struct TestEntity {
     #[key]
     pub key: Option<Key>,
