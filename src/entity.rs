@@ -11,7 +11,7 @@ use std::ops::Deref;
 //
 // DatastoreEntity related errors
 //
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum DatastoreParseError {
     #[error("value not found")]
     NoSuchValue,

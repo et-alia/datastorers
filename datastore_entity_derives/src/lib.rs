@@ -32,7 +32,7 @@ struct FieldMeta {
     entity_getter: Option<EntityGetter>,
 }
 
-fn get_generic_argument(typepath: &TypePath) -> Option<String> {
+fn get_generic_argument(typepath: &TypePath) -> Option<&TypePath> {
     let type_params = &typepath.path.segments.first().unwrap().arguments;
     let generic_arg = match type_params {
         PathArguments::AngleBracketed(params) => params.args.first().unwrap(),
@@ -41,10 +41,41 @@ fn get_generic_argument(typepath: &TypePath) -> Option<String> {
     // This argument must be a type:
     match generic_arg {
         GenericArgument::Type(ty) => match ty {
-            Type::Path(p) => Some(p.path.segments.first().unwrap().ident.to_string()),
+            Type::Path(p) => Some(p),
             _ => None,
         },
         _ => None,
+    }
+}
+
+fn build_proprty_expr(
+    datastore_property_name: &String,
+    struct_property_name: &String,
+    optional: bool,
+    property_operator_suffix: &String,
+) -> (String, String) {
+    if optional {
+        (
+            format!(
+                "properties.get_{}(\"{}\").map_or_else(optional_err, optional_ok)",
+                property_operator_suffix, datastore_property_name
+            ),
+            format!(
+                "if let Some(val) = entity.{} {{properties.set_{}(\"{}\", val);}}",
+                struct_property_name, property_operator_suffix, datastore_property_name
+            )
+        )
+    } else {
+        (
+            format!(
+                "properties.get_{}(\"{}\")",
+                property_operator_suffix, datastore_property_name
+            ),
+            format!(
+                "properties.set_{}(\"{}\", entity.{})",
+                property_operator_suffix, datastore_property_name, struct_property_name
+            )
+        )
     }
 }
 
@@ -52,17 +83,17 @@ fn build_field_meta(
     ident: Ident,
     datastore_property_name: &String,
     struct_property_name: &String,
+    optional: bool,
     property_operator_suffix: &String,
     indexed: bool,
     getter_value_type: &'static str,
 ) -> FieldMeta {
-    let into_property_expr_string = format!(
-        "properties.get_{}(\"{}\")",
-        property_operator_suffix, datastore_property_name
-    );
-    let from_property_expr_string = format!(
-        "properties.set_{}(\"{}\", entity.{})",
-        property_operator_suffix, datastore_property_name, struct_property_name
+    
+    let (into_property_expr_string, from_property_expr_string) = build_proprty_expr(
+        datastore_property_name,
+        struct_property_name,
+        optional,
+        property_operator_suffix,
     );
     let entity_getter = match indexed {
         true => Some(EntityGetter {
@@ -81,33 +112,54 @@ fn build_field_meta(
     }
 }
 
+fn recurse_property_path(
+    path: &TypePath
+) -> Option<(&'static str, &'static str, &'static str, bool)> {
+    recurse_property(
+        Some(path),
+        path.path.segments.first().unwrap().ident.to_string().as_str(),
+        "",
+        false
+    )
+}
+
 fn recurse_property(
     path: Option<&TypePath>,
     segment_str: &str,
-    getter_suffix: &'static str
-) -> Option<(&'static str, &'static str, &'static str)> {
+    getter_suffix: &'static str,
+    optional: bool
+) -> Option<(&'static str, &'static str, &'static str, bool)> {
     match segment_str {
-        "String" => Some(("string", "String", getter_suffix)),
-        "i64" => Some(("integer", "i64", getter_suffix)),
-        "bool" => Some(("bool", "bool", getter_suffix)),
-        "Vec" => {
-            if let Some(p) = path {
-                if let Some(generic_type) = get_generic_argument(p) {
-                    recurse_property(
-                        None, // Do not pass path, this will abort reqursion on next level
-                        &generic_type,
-                        "_array"
-                    )
-                } else {
-                    // No valid generic type set, no need to continue iteration
-                    None
-                }
-            } else {
-                // No path, no need to go deeper
-                None
-            }
-        },
+        "String" => Some(("string", "String", getter_suffix, optional)),
+        "i64" => Some(("integer", "i64", getter_suffix, optional)),
+        "bool" => Some(("bool", "bool", getter_suffix, optional)),
+        "Vec" => recurse_generic(path, "_array", optional),
+        "Option" => recurse_generic(path, getter_suffix, true),
         _ => None, // Ignore
+    }
+}
+
+fn recurse_generic(
+    path: Option<&TypePath>,
+    getter_suffix: &'static str,
+    optional: bool
+) -> Option<(&'static str, &'static str, &'static str, bool)> {
+    if let Some(p) = path {
+        if let Some(generic) = get_generic_argument(p) {
+            let generic_type = generic.path.segments.first().unwrap().ident.to_string();
+            recurse_property(
+                Some(generic),
+                &generic_type,
+                getter_suffix,
+                optional
+            )
+        } else {
+            // No valid generic type set, no need to continue iteration
+            None
+        }
+    } else {
+        // No path, no need to go deeper
+        None
     }
 }
 
@@ -182,17 +234,14 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                         let struct_property_name = ident.to_string();
                         let datastore_property_name = property_name.unwrap_or(struct_property_name.clone());
 
-                        if let Some(property_data) = recurse_property(
-                            Some(p),
-                            p.path.segments.first().unwrap().ident.to_string().as_str(),
-                            ""
-                        ) {
-                            let (property_operator_suffix, getter_value_type, operator_suffix) = property_data;
+                        if let Some(property_data) = recurse_property_path(&p) {
+                            let (property_operator_suffix, getter_value_type, operator_suffix, optional) = property_data;
                            
                             field_metas.push(build_field_meta(
                                 ident,
                                 &datastore_property_name,
                                 &struct_property_name,
+                                optional,
                                 &format!("{}{}", property_operator_suffix, operator_suffix),
                                 indexed,
                                 getter_value_type,
@@ -320,6 +369,18 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             fn try_from(mut entity: datastore_entity::DatastoreEntity) -> Result<Self, Self::Error> {
                 let key = entity.key();
                 let mut properties = datastore_entity::DatastoreProperties::try_from(entity)?;
+
+                fn optional_ok<T>(val: T) -> Result<Option<T>, datastore_entity::DatastoreParseError> {
+                    Ok(Some(val))
+                }
+                fn optional_err<T>(err: datastore_entity::DatastoreParseError) -> Result<Option<T>, datastore_entity::DatastoreParseError> {
+                    if err == datastore_entity::DatastoreParseError::NoSuchValue {
+                        // Vale not set => the optional representation is None
+                        Ok(None)
+                    } else {
+                        Err(err) // Forward the error
+                    }
+                }
                 Ok(
                     #name {
                         #key_field_expr: key,
