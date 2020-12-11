@@ -24,6 +24,8 @@ pub enum DatastoreClientError {
     AmbigiousResult,
     #[error("failed to assign key to inserted entity")]
     KeyAssignmentFailed,
+    #[error("delete operation failed")]
+    DeleteFailed,
     #[error("Unexpected response data")]
     ApiDataError,
 }
@@ -157,12 +159,10 @@ fn generate_empty_key(kind: String) -> Key {
     }
 }
 
-pub fn commit_one(
-    entity: DatastoreEntity,
-    kind: String,
+fn commit(
+    mutations: Vec<Mutation>,
     connection: &impl DatastoreConnection
-) -> Result<DatastoreEntity, DatastorersError> {
-    let mut result_entity = entity.clone();
+  ) -> Result<CommitResponse, google_datastore1::Error> {
     let client = connection.get_client();
     let projects = client.projects();
     let builder = projects.begin_transaction(
@@ -172,20 +172,7 @@ pub fn commit_one(
         connection.get_project_name(),
     );
     let begin_transaction: BeginTransactionResponse = builder.execute()?;
-    let is_insert = !entity.has_key();
-    let mut ent: Entity = entity.try_into()?;
-    if !ent.key.is_some() {
-        ent.key = Some(generate_empty_key(kind));
-    }
-
-    let mut mutation = Mutation::default();
-    if is_insert {
-        mutation.insert = Some(ent);
-    } else {
-        mutation.update = Some(ent);
-    }
-    let mutations: Vec<Mutation> = vec![mutation];
-
+    
     let commit_request = projects.commit(
         CommitRequest {
             mode: None,
@@ -194,8 +181,28 @@ pub fn commit_one(
         },
         connection.get_project_name(),
     );
-
-    let cre: CommitResponse = commit_request.execute()?;
+  
+    commit_request.execute()
+  }
+  
+  pub fn commit_one(
+    entity: DatastoreEntity,
+    kind: String,
+    connection: &impl DatastoreConnection
+  ) -> Result<DatastoreEntity, DatastorersError> {
+    let mut result_entity = entity.clone();
+    let is_insert = !entity.has_key();
+    let mut ent: Entity = entity.try_into()?;
+    if !ent.key.is_some() {
+        ent.key = Some(generate_empty_key(kind));
+    }
+    let mut mutation = Mutation::default();
+    if is_insert {
+        mutation.insert = Some(ent);
+    } else {
+        mutation.update = Some(ent);
+    }  
+    let cre: CommitResponse = commit(vec![mutation], connection)?;
             
     if is_insert {
         // The commit result shall contain a key that we can assign to the entity in order to later
@@ -213,6 +220,29 @@ pub fn commit_one(
             Err(DatastoreClientError::KeyAssignmentFailed)?
         }
     }
-
+  
     Ok(result_entity)
-}
+  }
+  
+  pub fn delete_one(
+    entity: DatastoreEntity,
+    connection: &impl DatastoreConnection
+  ) -> Result<(), DatastorersError> {
+    let key = entity.key()
+        .ok_or(DatastoreClientError::NotFound)?; // No key to delete
+
+    let mut mutation = Mutation::default();
+    mutation.delete = Some(key);
+    let cre: CommitResponse = commit(vec![mutation], connection)?;
+
+    // Assert that we have a commit result
+    if let Some(results) = &cre.mutation_results {
+        match results.len() {
+            0 => Err(DatastoreClientError::DeleteFailed)?,
+            1 => Ok(()), // Success
+            _ => Err(DatastoreClientError::AmbigiousResult)?,
+        }
+    } else {
+        Err(DatastoreClientError::DeleteFailed)?
+    }
+  }
