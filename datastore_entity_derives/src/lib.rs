@@ -52,7 +52,7 @@ fn build_field_meta(
     ident: Ident,
     datastore_property_name: &String,
     struct_property_name: &String,
-    property_operator_suffix: &'static str,
+    property_operator_suffix: &String,
     indexed: bool,
     getter_value_type: &'static str,
 ) -> FieldMeta {
@@ -78,6 +78,36 @@ fn build_field_meta(
         into_property: parse_expr(&into_property_expr_string),
         from_property: parse_expr(&from_property_expr_string),
         entity_getter: entity_getter,
+    }
+}
+
+fn recurse_property(
+    path: Option<&TypePath>,
+    segment_str: &str,
+    getter_suffix: &'static str
+) -> Option<(&'static str, &'static str, &'static str)> {
+    match segment_str {
+        "String" => Some(("string", "String", getter_suffix)),
+        "i64" => Some(("integer", "i64", getter_suffix)),
+        "bool" => Some(("bool", "bool", getter_suffix)),
+        "Vec" => {
+            if let Some(p) = path {
+                if let Some(generic_type) = get_generic_argument(p) {
+                    recurse_property(
+                        None, // Do not pass path, this will abort reqursion on next level
+                        &generic_type,
+                        "_array"
+                    )
+                } else {
+                    // No valid generic type set, no need to continue iteration
+                    None
+                }
+            } else {
+                // No path, no need to go deeper
+                None
+            }
+        },
+        _ => None, // Ignore
     }
 }
 
@@ -150,59 +180,23 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                     Type::Path(p) => {
                         let ident = field.ident.as_ref().unwrap().clone();
                         let struct_property_name = ident.to_string();
-                        let datastore_property_name =
-                            property_name.unwrap_or(struct_property_name.clone());
+                        let datastore_property_name = property_name.unwrap_or(struct_property_name.clone());
 
-                        match p.path.segments.first().unwrap().ident.to_string().as_str() {
-                            "String" => {
-                                field_metas.push(build_field_meta(
-                                    ident,
-                                    &datastore_property_name,
-                                    &struct_property_name,
-                                    "string",
-                                    indexed,
-                                    "String",
-                                ));
-                            }
-                            "i64" => {
-                                field_metas.push(build_field_meta(
-                                    ident,
-                                    &datastore_property_name,
-                                    &struct_property_name,
-                                    "integer",
-                                    indexed,
-                                    "i64",
-                                ));
-                            }
-                            "bool" => {
-                                field_metas.push(build_field_meta(
-                                    ident,
-                                    &datastore_property_name,
-                                    &struct_property_name,
-                                    "bool",
-                                    indexed,
-                                    "bool",
-                                ));
-                            }
-                            "Vec" => {
-                                match get_generic_argument(p) {
-                                    Some(generic_type) => match generic_type.as_str() {
-                                        "String" => {
-                                            field_metas.push(build_field_meta(
-                                                ident,
-                                                &datastore_property_name,
-                                                &struct_property_name,
-                                                "string_array",
-                                                indexed,
-                                                "String",
-                                            ));
-                                        }
-                                        _ => (), // Ignore
-                                    },
-                                    None => (), // Ignore
-                                }
-                            }
-                            _ => (), // Ignore
+                        if let Some(property_data) = recurse_property(
+                            Some(p),
+                            p.path.segments.first().unwrap().ident.to_string().as_str(),
+                            ""
+                        ) {
+                            let (property_operator_suffix, getter_value_type, operator_suffix) = property_data;
+                           
+                            field_metas.push(build_field_meta(
+                                ident,
+                                &datastore_property_name,
+                                &struct_property_name,
+                                &format!("{}{}", property_operator_suffix, operator_suffix),
+                                indexed,
+                                getter_value_type,
+                            ));
                         }
                     }
                     _ => (), // Ignore
