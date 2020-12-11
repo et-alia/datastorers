@@ -1,4 +1,5 @@
-use datastore_entity::connection::Connection;
+mod connection;
+use crate::connection::{create_test_connection};
 use datastore_entity::{DatastoreManaged, DatastoreClientError, DatastorersError};
 
 use google_datastore1::schemas::Key;
@@ -6,7 +7,6 @@ use rand::{thread_rng, Rng};
 use rand::distributions::Alphanumeric;
 
 use std::convert::TryInto;
-use std::env;
 
 #[derive(DatastoreManaged, Clone, Debug)]
 #[kind = "Test"]
@@ -29,23 +29,6 @@ pub struct TestEntity {
     #[indexed]
     #[property = "str_array_property"]
     pub prop_string_array: Vec<String>,
-}
-
-fn get_project_name() -> String {
-    let env_var_name = "TEST_PROJECT_NAME";
-    match env::var(env_var_name) {
-        Ok(val) => val,
-        Err(e) => panic!("Failed to read project name from {}: {}", env_var_name, e),
-    }
-}
-
-fn create_test_connection() -> Connection {
-    let project_name = get_project_name();
-
-    match Connection::from_project_name(project_name) {
-        Ok(connection) => connection,
-        Err(e) => panic!("Failed to setup google cloud connection: {}", e),
-    }
 }
 
 fn generate_random_string(len: usize) -> String {
@@ -162,7 +145,7 @@ fn test_get_by_property() -> Result<(), DatastorersError> {
     // Multiple results
     assert_client_error(
         TestEntity::get_one_by_prop_string(duplicated_entity.prop_string, &connection),
-        DatastoreClientError::NotFound
+        DatastoreClientError::AmbigiousResult
     );
 
     // Success

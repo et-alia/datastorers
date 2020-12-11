@@ -1,8 +1,7 @@
 pub mod connection;
-mod accesstoken;
 mod entity;
 pub use crate::entity::{DatastoreEntity, DatastoreProperties, DatastoreValue, DatastoreParseError, DatastoreEntityCollection, ResultCollection};
-pub use crate::connection::{DatastoreConnection, ConnectionError};
+pub use crate::connection::{DatastoreConnection};
 
 pub use datastore_entity_derives::DatastoreManaged;
 
@@ -37,8 +36,6 @@ pub enum DatastoreClientError {
 
 #[derive(Error, Debug)]
 pub enum DatastorersError {
-    #[error(transparent)]
-    ConnectionError(#[from] ConnectionError),    
     #[error(transparent)]
     ParseError(#[from] DatastoreParseError),
     #[error(transparent)]
