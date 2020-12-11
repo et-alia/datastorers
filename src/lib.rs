@@ -14,6 +14,8 @@ use google_datastore1::schemas::{
     Value, QueryResultBatchMoreResults
 };
 
+use std::convert::TryInto;
+
 #[derive(Error, Debug)]
 pub enum DatastoreClientError {
     #[error("entity not found")]
@@ -39,14 +41,11 @@ pub enum DatastorersError {
 }
 
 
-pub fn get_one_by_id<T>(
+pub fn get_one_by_id(
     id: i64,
     kind: String,
-    connection: &T
-) -> Result<DatastoreEntity, DatastorersError>
-where
-    T: DatastoreConnection
-{
+    connection: &impl DatastoreConnection
+) -> Result<DatastoreEntity, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
 
@@ -71,10 +70,7 @@ where
                 0 => Err(DatastoreClientError::NotFound)?,
                 1 => {
                     if let Some(entity) = found.remove(0).entity {
-                        let entity_properties = entity.properties.ok_or(DatastoreParseError::NoProperties)?;
-                        let props = DatastoreProperties::from_map(entity_properties);
-                        let result = DatastoreEntity::from(entity.key, props);
-
+                        let result: DatastoreEntity = entity.try_into()?;
                         Ok(result)
                     } else {
                         Err(DatastoreClientError::NotFound)?
@@ -92,14 +88,13 @@ fn get_datastore_value_for_value<K: Into<DatastoreValue>>(value: K) -> Value {
     datastore_value.into()
 }
 
-pub fn get_one_by_property<T, K>(
+pub fn get_one_by_property<K>(
     property_name: String,
     property_value: K,
     kind: String,
-    connection: &T
+    connection: &impl DatastoreConnection
 ) -> Result<DatastoreEntity, DatastorersError>
 where
-    T: DatastoreConnection,
     K: Into<DatastoreValue>
 {
     let client = connection.get_client();
@@ -135,10 +130,7 @@ where
                     0 => Err(DatastoreClientError::NotFound)?,
                     1 => {
                         if let Some(entity) = found.remove(0).entity {
-                            let entity_properties = entity.properties.ok_or(DatastoreParseError::NoProperties)?;
-                            let props = DatastoreProperties::from_map(entity_properties);
-                            let result = DatastoreEntity::from(entity.key, props);
-    
+                            let result: DatastoreEntity = entity.try_into()?;
                             Ok(result)
                         } else {
                             Err(DatastoreClientError::NotFound)?
@@ -165,14 +157,11 @@ fn generate_empty_key(kind: String) -> Key {
     }
 }
 
-pub fn commit_one<T>(
+pub fn commit_one(
     entity: DatastoreEntity,
     kind: String,
-    connection: &T
-) -> Result<DatastoreEntity, DatastorersError>
-where
-    T: DatastoreConnection
-{
+    connection: &impl DatastoreConnection
+) -> Result<DatastoreEntity, DatastorersError> {
     let mut result_entity = entity.clone();
     let client = connection.get_client();
     let projects = client.projects();
@@ -184,16 +173,10 @@ where
     );
     let begin_transaction: BeginTransactionResponse = builder.execute()?;
     let is_insert = !entity.has_key();
-    let key = entity
-        .key()
-        .unwrap_or_else(|| -> Key { generate_empty_key(kind) });
-    let properties: DatastoreProperties = DatastoreProperties::from(entity)
-        .ok_or(DatastoreParseError::NoProperties)?;
-
-    let ent = Entity {
-        key: Some(key),
-        properties: Some(properties.into_map()),
-    };
+    let mut ent: Entity = entity.try_into()?;
+    if !ent.key.is_some() {
+        ent.key = Some(generate_empty_key(kind));
+    }
 
     let mut mutation = Mutation::default();
     if is_insert {

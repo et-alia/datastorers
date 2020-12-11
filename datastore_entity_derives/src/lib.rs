@@ -235,27 +235,24 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #self_key_field_expr
             }
 
-            pub fn get_one_by_id<T>(id: i64, connection: &T) -> Result<#name, datastore_entity::DatastorersError>
-                where T: datastore_entity::DatastoreConnection
+            pub fn get_one_by_id(id: i64, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
             {
-                let datastoreEntity = datastore_entity::get_one_by_id(id, #kind_str.to_string(), connection)?;
-                let result: #name = datastoreEntity
+                let datastore_entity = datastore_entity::get_one_by_id(id, #kind_str.to_string(), connection)?;
+                let result: #name = datastore_entity
                     .try_into()?;
                 return Ok(result)
             }
             #(
-                pub fn #entity_getters<T>(value: #entity_getter_key_types, connection: &T) -> Result<#name, datastore_entity::DatastorersError>
-                    where T: datastore_entity::DatastoreConnection
+                pub fn #entity_getters(value: #entity_getter_key_types, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
                 {
-                    let datastoreEntity = datastore_entity::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection)?;
-                    let result: #name = datastoreEntity
+                    let datastore_entity = datastore_entity::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection)?;
+                    let result: #name = datastore_entity
                         .try_into()?;
                     return Ok(result)
                 }
             )*
 
-            pub fn commit<T>(self, connection: &T) -> Result<#name, datastore_entity::DatastorersError>
-                where T: datastore_entity::DatastoreConnection
+            pub fn commit(self, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
             {
                 let result_entity = datastore_entity::commit_one(
                     self.into(),
@@ -274,8 +271,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
 
             fn try_from(mut entity: datastore_entity::DatastoreEntity) -> Result<Self, Self::Error> {
                 let key = entity.key();
-                let mut properties = datastore_entity::DatastoreProperties::from(entity)
-                    .ok_or_else(|| datastore_entity::DatastoreParseError::NoProperties)?;
+                let mut properties = datastore_entity::DatastoreProperties::try_from(entity)?;
                 Ok(
                     #name {
                         #key_field_expr: key,
