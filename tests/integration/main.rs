@@ -24,6 +24,10 @@ pub struct TestEntity {
     #[indexed]
     #[property = "int_property"]
     pub prop_int: i64,
+
+    #[indexed]
+    #[property = "str_array_property"]
+    pub prop_string_array: Vec<String>,
 }
 
 fn get_project_name() -> String {
@@ -65,6 +69,7 @@ fn generate_random_entity() -> TestEntity {
         prop_string: generate_random_string(10),
         prop_bool: generate_random_bool(),
         prop_int: generate_random_int(),
+        prop_string_array: vec![],
     }
 }
 
@@ -247,4 +252,147 @@ fn test_update_property() {
     };
     assert_eq!(&inserted.key, &fetched.key);
     assert_eq!(&new_string_prop, &fetched.prop_string);
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_get_by_array_property() {
+    let connection = create_test_connection();
+
+    // Generate some test entities
+    let string_value_a = generate_random_string(10);
+    let string_value_b = generate_random_string(10);
+    let string_value_c = generate_random_string(10);
+
+    let mut entity_a = generate_random_entity();
+    entity_a.prop_string_array = vec![string_value_a.clone(), string_value_b.clone()];
+    let mut entity_b = generate_random_entity();
+    entity_b.prop_string_array = vec![string_value_b.clone(), string_value_c.clone()];
+
+    // Insert
+    let inserted_a = match entity_a.commit(&connection) {
+        Ok(e) => e,
+        Err(e) => panic!("Failed to insert entity: {}", e),
+    };
+    let inserted_b = match entity_b.commit(&connection) {
+        Ok(e) => e,
+        Err(e) => panic!("Failed to insert entity: {}", e),
+    };
+
+    // Fetch for string_value_a => shall return entity_a
+    let fetched_entity = match TestEntity::get_one_by_prop_string_array(string_value_a, &connection) {
+        Ok(e) => e,
+        Err(e) => panic!("Failed to fetch entity: {}", e),
+    };
+    assert_eq!(&inserted_a.key, &fetched_entity.key);
+
+
+    // Fetch for string_value_c => shall return entity_b
+    let fetched_entity = match TestEntity::get_one_by_prop_string_array(string_value_c, &connection) {
+        Ok(e) => e,
+        Err(e) => panic!("Failed to fetch entity: {}", e),
+    };
+    assert_eq!(&inserted_b.key, &fetched_entity.key);
+
+    // Fetch for string_value_b => shall return multiple entities => error
+    match TestEntity::get_one_by_prop_string_array(string_value_b, &connection) {
+        Ok(_) => panic!("Expected error, but got success"),
+        Err(e) => match e {
+            DatastorersError::DatastoreClientError(client_error) => {
+                match client_error {
+                    DatastoreClientError::AmbigiousResult => {}
+                    _ => panic!("Expected ambigious result error"),
+                }
+            },
+            _ => panic!("Expected DatastoreClientError"),
+        }
+    };
+}
+
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_update_array_property() {
+    let connection = create_test_connection();
+
+    // Generate some test entities
+    let string_value_a = generate_random_string(10);
+    let string_value_b = generate_random_string(10);
+    let string_value_c = generate_random_string(10);
+
+    let mut entity = generate_random_entity();
+    entity.prop_string_array = vec![string_value_a.clone(), string_value_b.clone()];
+    
+    // Insert
+    let mut inserted = match entity.commit(&connection) {
+        Ok(e) => e,
+        Err(e) => panic!("Failed to insert entity: {}", e),
+    };
+    let inserted_key = inserted.key.clone();
+
+    // Fetch for string_value_a => shall return entity
+    let fetched_entity = match TestEntity::get_one_by_prop_string_array(string_value_a.clone(), &connection) {
+        Ok(e) => e,
+        Err(e) => panic!("Failed to fetch entity: {}", e),
+    };
+    assert_eq!(&inserted.key, &fetched_entity.key);
+
+    // Fetch for string_value_b => shall return entity
+    let fetched_entity = match TestEntity::get_one_by_prop_string_array(string_value_b.clone(), &connection) {
+        Ok(e) => e,
+        Err(e) => panic!("Failed to fetch entity: {}", e),
+    };
+    assert_eq!(&inserted.key, &fetched_entity.key);
+
+    // Fetch for string_value_c => shall return error not found
+    match TestEntity::get_one_by_prop_string_array(string_value_c.clone(), &connection) {
+        Ok(_) => panic!("Expected error, but got success"),
+        Err(e) => match e {
+            DatastorersError::DatastoreClientError(client_error) => {
+                match client_error {
+                    DatastoreClientError::NotFound => {}
+                    _ => panic!("Expected not found error"),
+                }
+            },
+            _ => panic!("Expected DatastoreClientError"),
+        }
+    };
+
+    // Change array and commit
+    inserted.prop_string_array.remove(0); // Remove string_value_a
+    inserted.prop_string_array.push(string_value_c.clone()); // Push string_value_c
+    match inserted.commit(&connection) {
+        Ok(e) => e,
+        Err(e) => panic!("Failed to insert entity: {}", e),
+    };
+
+    // Try fetch again, now a shall fail and b + c shall return the inserted entity
+    
+    // Fetch for string_value_a => shall return error not found
+    match TestEntity::get_one_by_prop_string_array(string_value_a, &connection) {
+        Ok(_) => panic!("Expected error, but got success"),
+        Err(e) => match e {
+            DatastorersError::DatastoreClientError(client_error) => {
+                match client_error {
+                    DatastoreClientError::NotFound => {}
+                    _ => panic!("Expected not found error"),
+                }
+            },
+            _ => panic!("Expected DatastoreClientError"),
+        }
+    };
+
+    // Fetch for string_value_b => shall return entity
+    let fetched_entity = match TestEntity::get_one_by_prop_string_array(string_value_b, &connection) {
+        Ok(e) => e,
+        Err(e) => panic!("Failed to fetch entity: {}", e),
+    };
+    assert_eq!(&inserted_key, &fetched_entity.key);
+
+    // Fetch for string_value_c => shall return entity
+    let fetched_entity = match TestEntity::get_one_by_prop_string_array(string_value_c, &connection) {
+        Ok(e) => e,
+        Err(e) => panic!("Failed to fetch entity: {}", e),
+    };
+    assert_eq!(&inserted_key, &fetched_entity.key);
 }
