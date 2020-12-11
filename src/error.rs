@@ -33,6 +33,8 @@ pub enum DatastoreClientError {
     ApiDataError,
     #[error("no more pages to fetch")]
     NoMorePages,
+    #[error("cannot create transacion from transaction")]
+    TransactionInProgress,
 }
 
 #[derive(Error, Debug)]

@@ -33,7 +33,7 @@ impl GoogleToken {
 }
 
 //
-// Implement a DatastoreCOnnection to be used in integration tests
+// Implement a DatastoreConnection to be used in integration tests
 //
 pub struct Connection {
   client: Client,
