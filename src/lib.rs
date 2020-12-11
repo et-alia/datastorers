@@ -18,7 +18,8 @@ use std::convert::TryInto;
 use std::convert::TryFrom;
 
 const DEFAULT_PAGE_SIZE: i32 = 50;
-#[derive(Error, Debug)]
+
+#[derive(Error, Debug, PartialEq)]
 pub enum DatastoreClientError {
     #[error("entity not found")]
     NotFound,
