@@ -1,7 +1,7 @@
 pub mod connection;
 mod accesstoken;
 mod entity;
-pub use crate::entity::{DatastoreEntity, DatastoreProperties, DatastoreValue, DatastoreParseError};
+pub use crate::entity::{DatastoreEntity, DatastoreProperties, DatastoreValue, DatastoreParseError, DatastoreEntityCollection, ResultCollection};
 pub use crate::connection::{DatastoreConnection, ConnectionError};
 
 pub use datastore_entity_derives::DatastoreManaged;
@@ -15,7 +15,9 @@ use google_datastore1::schemas::{
 };
 
 use std::convert::TryInto;
+use std::convert::TryFrom;
 
+const DEFAULT_PAGE_SIZE: i32 = 50;
 #[derive(Error, Debug)]
 pub enum DatastoreClientError {
     #[error("entity not found")]
@@ -26,8 +28,10 @@ pub enum DatastoreClientError {
     KeyAssignmentFailed,
     #[error("delete operation failed")]
     DeleteFailed,
-    #[error("Unexpected response data")]
+    #[error("unexpected response data")]
     ApiDataError,
+    #[error("no more pages to fetch")]
+    NoMorePages,
 }
 
 #[derive(Error, Debug)]
@@ -90,19 +94,12 @@ fn get_datastore_value_for_value<K: Into<DatastoreValue>>(value: K) -> Value {
     datastore_value.into()
 }
 
-pub fn get_one_by_property<K>(
+fn build_query_from_property(
     property_name: String,
-    property_value: K,
+    property_value: impl Into<DatastoreValue>,
     kind: String,
-    connection: &impl DatastoreConnection
-) -> Result<DatastoreEntity, DatastorersError>
-where
-    K: Into<DatastoreValue>
-{
-    let client = connection.get_client();
-    let projects = client.projects();
-
-    let mut req = RunQueryRequest::default();
+    limit: i32,
+) -> Query {
     let mut filter = Filter::default();
     filter.property_filter = Some(PropertyFilter {
         property: Some(PropertyReference {
@@ -114,8 +111,26 @@ where
     let mut query = Query::default();
     query.kind = Some(vec![KindExpression { name: Some(kind) }]);
     query.filter = Some(filter);
-    query.limit = Some(1);
-    req.query = Some(query);
+    query.limit = Some(limit);
+
+    return query;
+}
+
+pub fn get_one_by_property(
+    property_name: String,
+    property_value: impl Into<DatastoreValue>,
+    kind: String,
+    connection: &impl DatastoreConnection
+) -> Result<DatastoreEntity, DatastorersError> {
+    let client = connection.get_client();
+    let projects = client.projects();
+    let mut req = RunQueryRequest::default();
+    req.query = Some(build_query_from_property(
+        property_name,
+        property_value,
+        kind,
+        1,
+    ));
 
     let resp: RunQueryResponse = projects
         .run_query(req, connection.get_project_name())
@@ -145,6 +160,80 @@ where
             }
         },
         None => Err(DatastoreClientError::NotFound)?,
+    }
+}
+
+fn get_page(
+    query: Query,
+    connection: &impl DatastoreConnection
+) -> Result<DatastoreEntityCollection, DatastorersError> {
+    let client = connection.get_client();
+    let projects = client.projects();
+    let mut req = RunQueryRequest::default();
+    req.query = Some(query.clone());
+    let resp: RunQueryResponse = projects
+        .run_query(req, connection.get_project_name())
+        .execute()?;
+
+    match resp.batch {
+        Some(batch) => { 
+            let more_results = batch.more_results.ok_or(DatastoreClientError::ApiDataError)?;
+            let has_more_results = more_results != QueryResultBatchMoreResults::NoMoreResults;
+            let end_cursor = batch.end_cursor.ok_or(DatastoreClientError::ApiDataError)?;
+            if let Some(found) = batch.entity_results {
+                // Map results and return
+                let mapped =
+                    found.into_iter().map(|e| {
+                        if let Some(entity) = e.entity {
+                            let result: DatastoreEntity = entity.try_into()?;
+                            Ok(result)
+                        } else {
+                            Err(DatastoreClientError::NotFound)?
+                        }
+                    })
+                    .collect::<Result<Vec<DatastoreEntity>, DatastorersError>>()?;
+                Ok(DatastoreEntityCollection::from_result(mapped, query, end_cursor, has_more_results))
+            } else {
+                // Empty result
+                Ok(DatastoreEntityCollection::default())
+            }
+        },
+        None => Err(DatastoreClientError::NotFound)?,
+    }
+}
+
+
+pub fn get_by_property(
+    property_name: String,
+    property_value: impl Into<DatastoreValue>,
+    kind: String,
+    limit: Option<i32>,
+    connection: &impl DatastoreConnection
+) -> Result<DatastoreEntityCollection, DatastorersError> {
+    let query = build_query_from_property(
+        property_name,
+        property_value,
+        kind,
+        limit.unwrap_or(DEFAULT_PAGE_SIZE)
+    );
+    get_page(query, connection)
+}
+
+impl<T> ResultCollection<T>
+where
+    T: TryFrom<DatastoreEntity, Error = DatastoreParseError>
+{
+    pub fn get_next_page(self, connection: &impl DatastoreConnection) -> Result<ResultCollection<T>, DatastorersError> {
+        if !self.has_more_results {
+            Err(DatastoreClientError::NoMorePages)?
+        }
+        let mut query = self.query.ok_or(DatastoreClientError::ApiDataError)?;
+        let end_cursor = self.end_cursor.ok_or(DatastoreClientError::ApiDataError)?;
+        query.start_cursor = Some(end_cursor);
+
+        let page: DatastoreEntityCollection = get_page(query, connection)?;
+        let res: ResultCollection<T> = page.try_into()?;
+        return Ok(res);
     }
 }
 
