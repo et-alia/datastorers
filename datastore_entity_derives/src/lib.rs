@@ -314,7 +314,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #kind_str
             }
 
-            pub fn id(&self) -> core::option::Option<&google_datastore1::schemas::Key> {
+            pub fn id(&self) -> std::option::Option<&google_datastore1::schemas::Key> {
                 #self_key_field_expr
             }
 
@@ -349,7 +349,6 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             {
                 let result_entity = datastore_entity::commit_one(
                     self.into(),
-                    #kind_str.to_string(),
                     connection
                 )?;
                 let result: #name = result_entity
@@ -398,8 +397,20 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #(
                     #from_properties;
                 )*
+
+                fn generate_empty_key() -> std::option::Option<google_datastore1::schemas::Key> {
+                    Some(google_datastore1::schemas::Key {
+                        partition_id: None,
+                        path: Some(vec![google_datastore1::schemas::PathElement {
+                            id: None,
+                            kind: Some(#kind_str.to_string()),
+                            name: None,
+                        }]),
+                    })
+                }
+
                 datastore_entity::DatastoreEntity::from(
-                    #entity_key_field_expr,
+                    #entity_key_field_expr.or_else(generate_empty_key),
                     properties,
                 )
             }

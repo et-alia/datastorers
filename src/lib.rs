@@ -24,6 +24,8 @@ pub enum DatastoreClientError {
     NotFound,
     #[error("multiple entities found, single result expected")]
     AmbigiousResult,
+    #[error("missing key, entity cannot be commited")]
+    KeyMissing,
     #[error("failed to assign key to inserted entity")]
     KeyAssignmentFailed,
     #[error("delete operation failed")]
@@ -235,17 +237,6 @@ where
     }
 }
 
-fn generate_empty_key(kind: String) -> Key {
-    Key {
-        partition_id: None,
-        path: Some(vec![PathElement {
-            id: None,
-            kind: Some(kind),
-            name: None,
-        }]),
-    }
-}
-
 fn commit(
     mutations: Vec<Mutation>,
     connection: &impl DatastoreConnection
@@ -272,23 +263,30 @@ fn commit(
     commit_request.execute()
   }
   
+  fn key_has_id(key: &Option<Key>) -> Result<bool, DatastoreClientError> {
+    match key {
+        Some(k) => {
+            if let Some(path) = &k.path {
+                if path.len() > 0 {
+                    return Ok(path[0].id.is_some());
+                }
+            }
+            Ok(false)
+        },
+        None => Err(DatastoreClientError::KeyMissing)
+    }
+  }
+
   pub fn commit_one(
     entity: DatastoreEntity,
-    kind: String,
     connection: &impl DatastoreConnection
   ) -> Result<DatastoreEntity, DatastorersError> {
+    let is_insert = !key_has_id(&entity.key())?;
     let mut result_entity = entity.clone();
-    let is_insert = !entity.has_key();
-    let mut ent: Entity = entity.try_into()?;
-    if !ent.key.is_some() {
-        ent.key = Some(generate_empty_key(kind));
-    }
+    let ent: Entity = entity.try_into()?;
+
     let mut mutation = Mutation::default();
-    if is_insert {
-        mutation.insert = Some(ent);
-    } else {
-        mutation.update = Some(ent);
-    }  
+    mutation.upsert = Some(ent);  
     let cre: CommitResponse = commit(vec![mutation], connection)?;
             
     if is_insert {
