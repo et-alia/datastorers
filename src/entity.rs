@@ -11,7 +11,7 @@ use std::ops::Deref;
 //
 // DatastoreEntity related errors
 //
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum DatastoreParseError {
     #[error("value not found")]
     NoSuchValue,
@@ -102,21 +102,52 @@ impl From<i64> for DatastoreValue {
     }
 }
 
+fn generate_array_value<T, F>(
+    array: Vec<T>,
+    value_generator: F
+) -> DatastoreValue
+    where F: Fn(T) -> Value
+{
+    let mut result = DatastoreValue::default();
+    result.array(
+        array
+            .into_iter()
+            .map(value_generator)
+            .collect(),
+    );
+    return result;
+}
+
 impl From<Vec<String>> for DatastoreValue {
-    fn from(str_vec_value: Vec<String>) -> DatastoreValue {
+    fn from(array: Vec<String>) -> DatastoreValue {
         fn generate_string_value(str_val: String) -> Value {
             let mut val = DatastoreValue::default();
             val.string(str_val);
             val.0
         }
-        let mut array_val = DatastoreValue::default();
-        array_val.array(
-            str_vec_value
-                .into_iter()
-                .map(generate_string_value)
-                .collect(),
-        );
-        return array_val;
+        generate_array_value(array, generate_string_value)
+    }
+}
+
+impl From<Vec<i64>> for DatastoreValue {
+    fn from(array: Vec<i64>) -> DatastoreValue {
+        fn generate_int_value(int_val: i64) -> Value {
+            let mut val = DatastoreValue::default();
+            val.integer(int_val);
+            val.0
+        }
+        generate_array_value(array, generate_int_value)
+    }
+}
+
+impl From<Vec<bool>> for DatastoreValue {
+    fn from(array: Vec<bool>) -> DatastoreValue {
+        fn generate_bool_value(bool_val: bool) -> Value {
+            let mut val = DatastoreValue::default();
+            val.boolean(bool_val);
+            val.0
+        }
+        generate_array_value(array, generate_bool_value)
     }
 }
 
@@ -191,15 +222,44 @@ impl DatastoreProperties {
     }
 
     pub fn get_string_array(&mut self, key: &str) -> Result<Vec<String>, DatastoreParseError> {
+        self.get_array(key, |v| v.string_value)
+    }
+
+    pub fn set_string_array(&mut self, key: &str, value: Vec<String>) 
+    {
+        let datastore_value: DatastoreValue = value.into();
+        self.0.insert(key.to_string(), datastore_value.0);
+    }
+
+    pub fn get_integer_array(&mut self, key: &str) -> Result<Vec<i64>, DatastoreParseError> {
+        self.get_array(key, |v| v.integer_value)
+    }
+
+    pub fn set_integer_array(&mut self, key: &str, value: Vec<i64>) 
+    {
+        let datastore_value: DatastoreValue = value.into();
+        self.0.insert(key.to_string(), datastore_value.0);
+    }
+
+    pub fn get_bool_array(&mut self, key: &str) -> Result<Vec<bool>, DatastoreParseError> {
+        self.get_array(key, |v| v.boolean_value)
+    }
+
+    pub fn set_bool_array(&mut self, key: &str, value: Vec<bool>) 
+    {
+        let datastore_value: DatastoreValue = value.into();
+        self.0.insert(key.to_string(), datastore_value.0);
+    }    
+
+    fn get_array<T, F>(&mut self, key: &str, extractor: F) -> Result<Vec<T>, DatastoreParseError>
+        where F: Fn(Value) -> Option<T>
+    {
         match self.0.remove(key) {
             Some(value) => match value.array_value {
                 Some(array_value) => match array_value.values {
                     Some(values) => values
                         .into_iter()
-                        .map(|v| {
-                            v.string_value
-                                .ok_or_else(|| DatastoreParseError::InvalidArrayValueFormat)
-                        })
+                        .map(|v| extractor(v).ok_or_else(|| DatastoreParseError::InvalidArrayValueFormat))
                         .collect(),
                     None => Ok(vec![]), // Empty array
                 },
@@ -207,11 +267,6 @@ impl DatastoreProperties {
             },
             None => Err(DatastoreParseError::NoSuchValue),
         }
-    }
-
-    pub fn set_string_array(&mut self, key: &str, value: Vec<String>) {
-        let datastore_value: DatastoreValue = value.into();
-        self.0.insert(key.to_string(), datastore_value.0);
     }
 }
 

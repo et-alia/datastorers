@@ -19,6 +19,5 @@ rand = "0.7.3"
 # no features by default
 default = []
 
-# Add feature "foo" here, then you can use it. 
-# Our "foo" feature depends on nothing else.
+# Enable integration testing, if not set all integration tests will be ignored
 integration_tests = []

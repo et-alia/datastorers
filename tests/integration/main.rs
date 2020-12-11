@@ -1,6 +1,6 @@
 mod connection;
 use crate::connection::{create_test_connection};
-use datastore_entity::{DatastoreManaged, DatastoreClientError, DatastorersError};
+use datastore_entity::{DatastoreManaged, DatastoreClientError, DatastoreParseError, DatastorersError};
 
 use google_datastore1::schemas::Key;
 use rand::{thread_rng, Rng};
@@ -29,6 +29,39 @@ pub struct TestEntity {
     #[indexed]
     #[property = "str_array_property"]
     pub prop_string_array: Vec<String>,
+}
+
+#[derive(DatastoreManaged, Clone, Debug)]
+#[kind = "Test"]
+#[page_size = 2]
+pub struct TestEntityOptional {
+    #[key]
+    pub key: Option<Key>,
+
+    #[indexed]
+    #[property = "Name"]
+    pub prop_string: Option<String>,
+
+    #[property = "bool_property"]
+    pub prop_bool: Option<bool>,
+
+    #[property = "int_property"]
+    pub prop_int: Option<i64>,
+
+    #[property = "str_array_property"]
+    pub prop_string_array: Option<Vec<String>>,
+}
+
+impl Default for TestEntityOptional {
+    fn default() -> Self {
+        TestEntityOptional {
+            key: None,
+            prop_string: None,
+            prop_bool: None,
+            prop_int: None,
+            prop_string_array: None,
+        }
+    }
 }
 
 fn generate_random_string(len: usize) -> String {
@@ -64,6 +97,17 @@ fn assert_client_error<T>(result: Result<T, DatastorersError>, expected_error: D
             DatastorersError::DatastoreClientError(client_error) =>
                 assert_eq!(client_error, expected_error, "Expected error to be {}", expected_error),
             _ => panic!("Expected DatastoreClientError"),
+        },
+    };
+}
+
+fn assert_parse_error<T>(result: Result<T, DatastorersError>, expected_error: DatastoreParseError) {
+    match result {
+        Ok(_) => panic!("expect no entity to be found"),
+        Err(e) => match e {
+            DatastorersError::ParseError(parse_error) =>
+                assert_eq!(parse_error, expected_error, "Expected error to be {}", expected_error),
+            _ => panic!("Expected DatastoreParseError"),
         },
     };
 }
@@ -370,6 +414,57 @@ fn test_delete() -> Result<(), DatastorersError> {
         TestEntity::get_one_by_prop_string(prop_string_b, &connection),
         DatastoreClientError::NotFound
     );
+
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_optional_values() -> Result<(), DatastorersError> {
+    let connection = create_test_connection();
+
+    let mut inserted_empty = TestEntityOptional::default().commit(&connection)?;
+    let inserted_id = inserted_empty.clone().key.unwrap().path.unwrap()[0].id.unwrap();
+
+    // Set string and bool value and commit
+    let string_value = generate_random_string(10);
+    inserted_empty.prop_string = Some(string_value.clone());
+    inserted_empty.prop_bool = Some(true);
+    inserted_empty.commit(&connection)?;
+    
+    // Fetch and validate that the inserted properties are saved
+    let mut fetched_entity = TestEntityOptional::get_one_by_id(inserted_id, &connection)?;
+    assert_eq!(&fetched_entity.prop_string, &Some(string_value.clone()));
+    assert_eq!(&fetched_entity.prop_bool, &Some(true));
+    assert_eq!(&fetched_entity.prop_int, &None);
+    assert_eq!(&fetched_entity.prop_string_array, &None);
+
+   // Try fetch with the non optional type, shalll fail since not all values are set!
+   assert_parse_error(
+       TestEntity::get_one_by_id(inserted_id, &connection),
+       DatastoreParseError::NoSuchValue
+   );
+
+    // Set the rest of the values
+    let int_value = generate_random_int();
+    fetched_entity.prop_int = Some(int_value);
+    fetched_entity.prop_string_array = Some(vec![]);
+    fetched_entity.commit(&connection)?;
+
+   // Fetch and validate result
+   let fetched_entity = TestEntityOptional::get_one_by_prop_string(string_value.clone(), &connection)?;
+   assert_eq!(&fetched_entity.prop_string, &Some(string_value.clone()));
+   assert_eq!(&fetched_entity.prop_bool, &Some(true));
+   assert_eq!(&fetched_entity.prop_int, &Some(int_value));
+   assert_eq!(&fetched_entity.prop_string_array, &Some(vec![]));
+
+   // Now shall it also be possible to fetch the entity type without optionals
+   let fetched_non_optional = TestEntity::get_one_by_prop_int(int_value, &connection)?;
+   assert_eq!(&fetched_non_optional.prop_string, &string_value);
+   assert_eq!(&fetched_non_optional.prop_bool, &true);
+   assert_eq!(&fetched_non_optional.prop_int, &int_value);
+   let empty_vec: Vec<String> = vec![];
+   assert_eq!(&fetched_non_optional.prop_string_array, &empty_vec);
 
     Ok(())
 }
