@@ -113,7 +113,7 @@ impl From<Vec<String>> for DatastoreValue {
         array_val.array(
             str_vec_value
                 .into_iter()
-                .map(|s| generate_string_value(s))
+                .map(generate_string_value)
                 .collect(),
         );
         return array_val;
