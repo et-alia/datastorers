@@ -93,15 +93,12 @@ fn get_datastore_value_for_value<K: Into<DatastoreValue>>(value: K) -> Value {
     datastore_value.into()
 }
 
-fn build_query_from_property<K>(
+fn build_query_from_property(
     property_name: String,
-    property_value: K,
+    property_value: impl Into<DatastoreValue>,
     kind: String,
     limit: Option<i32>,
-) -> Query
-where
-    K: Into<DatastoreValue>
-{
+) -> Query {
     let mut filter = Filter::default();
     filter.property_filter = Some(PropertyFilter {
         property: Some(PropertyReference {
@@ -118,15 +115,12 @@ where
     return query;
 }
 
-pub fn get_one_by_property<K>(
+pub fn get_one_by_property(
     property_name: String,
-    property_value: K,
+    property_value: impl Into<DatastoreValue>,
     kind: String,
     connection: &impl DatastoreConnection
-) -> Result<DatastoreEntity, DatastorersError>
-where
-    K: Into<DatastoreValue>
-{
+) -> Result<DatastoreEntity, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
     let mut req = RunQueryRequest::default();
@@ -208,15 +202,12 @@ fn get_page(
 }
 
 
-pub fn get_by_property<K>(
+pub fn get_by_property(
     property_name: String,
-    property_value: K,
+    property_value: impl Into<DatastoreValue>,
     kind: String,
     connection: &impl DatastoreConnection
-) -> Result<DatastoreEntityCollection, DatastorersError>
-where
-    K: Into<DatastoreValue>
-{
+) -> Result<DatastoreEntityCollection, DatastorersError> {
     let query = build_query_from_property(
         property_name,
         property_value,
