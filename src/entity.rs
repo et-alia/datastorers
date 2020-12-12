@@ -1,5 +1,6 @@
+use crate::error::{DatastoreParseError};
+
 use google_datastore1::schemas::{ArrayValue, Entity, Key, Value, Query};
-use thiserror::Error;
 
 use std::collections::BTreeMap;
 use std::convert::From;
@@ -7,19 +8,6 @@ use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
-
-//
-// DatastoreEntity related errors
-//
-#[derive(Error, Debug, PartialEq)]
-pub enum DatastoreParseError {
-    #[error("value not found")]
-    NoSuchValue,
-    #[error("no properties found on entity")]
-    NoProperties,
-    #[error("unexpected type in array item")]
-    InvalidArrayValueFormat,
-}
 
 //
 // DatastoreValue
