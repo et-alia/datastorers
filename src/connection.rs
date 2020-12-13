@@ -4,7 +4,3 @@ pub trait DatastoreConnection {
     fn get_client(&self) -> &Client;
     fn get_project_name(&self) -> String;
 }
-
-
-
-

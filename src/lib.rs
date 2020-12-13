@@ -1,29 +1,31 @@
 pub mod connection;
 mod entity;
 pub mod error;
-pub use crate::entity::{DatastoreEntity, DatastoreProperties, DatastoreValue, DatastoreEntityCollection, ResultCollection};
-pub use crate::connection::{DatastoreConnection};
-pub use crate::error::{DatastoreParseError, DatastoreClientError, DatastorersError};
+pub use crate::connection::DatastoreConnection;
+pub use crate::entity::{
+    DatastoreEntity, DatastoreEntityCollection, DatastoreProperties, DatastoreValue,
+    ResultCollection,
+};
+pub use crate::error::{DatastoreClientError, DatastoreParseError, DatastorersError};
 
 pub use datastore_entity_derives::DatastoreManaged;
 
 use google_datastore1::schemas::{
     BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
-    Filter, Key, KindExpression, LookupRequest, LookupResponse, Mutation, PathElement,
-    PropertyFilter, PropertyFilterOp, PropertyReference, Query, RunQueryRequest, RunQueryResponse,
-    Value, QueryResultBatchMoreResults
+    Filter, Key, KindExpression, LookupRequest, LookupResponse, Mutation, MutationResult,
+    PathElement, PropertyFilter, PropertyFilterOp, PropertyReference, Query,
+    QueryResultBatchMoreResults, RunQueryRequest, RunQueryResponse, Value,
 };
 
-use std::convert::TryInto;
 use std::convert::TryFrom;
+use std::convert::TryInto;
 
 const DEFAULT_PAGE_SIZE: i32 = 50;
-
 
 pub fn get_one_by_id(
     id: i64,
     kind: String,
-    connection: &impl DatastoreConnection
+    connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntity, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
@@ -40,24 +42,20 @@ pub fn get_one_by_id(
         keys: Some(vec![key]),
         read_options: None,
     };
-    let resp: LookupResponse = projects.lookup(req, connection.get_project_name())
+    let resp: LookupResponse = projects
+        .lookup(req, connection.get_project_name())
         .execute()?;
 
     match resp.found {
-        Some(mut found) => { 
-            match found.len() {
-                0 => Err(DatastoreClientError::NotFound)?,
-                1 => {
-                    if let Some(entity) = found.remove(0).entity {
-                        let result: DatastoreEntity = entity.try_into()?;
-                        Ok(result)
-                    } else {
-                        Err(DatastoreClientError::NotFound)?
-                    }
-                },
-                _ => Err(DatastoreClientError::AmbigiousResult)?
+        Some(mut found) => match found.len() {
+            0 => Err(DatastoreClientError::NotFound)?,
+            1 => {
+                let res = found.remove(0);
+                let result: DatastoreEntity = res.try_into()?;
+                Ok(result)
             }
-        }
+            _ => Err(DatastoreClientError::AmbigiousResult)?,
+        },
         None => Err(DatastoreClientError::NotFound)?,
     }
 }
@@ -93,7 +91,7 @@ pub fn get_one_by_property(
     property_name: String,
     property_value: impl Into<DatastoreValue>,
     kind: String,
-    connection: &impl DatastoreConnection
+    connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntity, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
@@ -110,8 +108,10 @@ pub fn get_one_by_property(
         .execute()?;
 
     match resp.batch {
-        Some(batch) => { 
-            let more_results = batch.more_results.ok_or(DatastoreClientError::ApiDataError)?;
+        Some(batch) => {
+            let more_results = batch
+                .more_results
+                .ok_or(DatastoreClientError::ApiDataError)?;
             if more_results != QueryResultBatchMoreResults::NoMoreResults {
                 Err(DatastoreClientError::AmbigiousResult)?
             }
@@ -119,26 +119,23 @@ pub fn get_one_by_property(
                 match found.len() {
                     0 => Err(DatastoreClientError::NotFound)?,
                     1 => {
-                        if let Some(entity) = found.remove(0).entity {
-                            let result: DatastoreEntity = entity.try_into()?;
-                            Ok(result)
-                        } else {
-                            Err(DatastoreClientError::NotFound)?
-                        }
-                    },
-                    _ => Err(DatastoreClientError::AmbigiousResult)?
+                        let res = found.remove(0);
+                        let result: DatastoreEntity = res.try_into()?;
+                        Ok(result)
+                    }
+                    _ => Err(DatastoreClientError::AmbigiousResult)?,
                 }
             } else {
                 Err(DatastoreClientError::NotFound)?
             }
-        },
+        }
         None => Err(DatastoreClientError::NotFound)?,
     }
 }
 
 fn get_page(
     query: Query,
-    connection: &impl DatastoreConnection
+    connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntityCollection, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
@@ -149,54 +146,60 @@ fn get_page(
         .execute()?;
 
     match resp.batch {
-        Some(batch) => { 
-            let more_results = batch.more_results.ok_or(DatastoreClientError::ApiDataError)?;
+        Some(batch) => {
+            let more_results = batch
+                .more_results
+                .ok_or(DatastoreClientError::ApiDataError)?;
             let has_more_results = more_results != QueryResultBatchMoreResults::NoMoreResults;
             let end_cursor = batch.end_cursor.ok_or(DatastoreClientError::ApiDataError)?;
             if let Some(found) = batch.entity_results {
                 // Map results and return
-                let mapped =
-                    found.into_iter().map(|e| {
-                        if let Some(entity) = e.entity {
-                            let result: DatastoreEntity = entity.try_into()?;
-                            Ok(result)
-                        } else {
-                            Err(DatastoreClientError::NotFound)?
-                        }
+                let mapped = found
+                    .into_iter()
+                    .map(|e| {
+                        let result: DatastoreEntity = e.try_into()?;
+                        Ok(result)
                     })
                     .collect::<Result<Vec<DatastoreEntity>, DatastorersError>>()?;
-                Ok(DatastoreEntityCollection::from_result(mapped, query, end_cursor, has_more_results))
+                Ok(DatastoreEntityCollection::from_result(
+                    mapped,
+                    query,
+                    end_cursor,
+                    has_more_results,
+                ))
             } else {
                 // Empty result
                 Ok(DatastoreEntityCollection::default())
             }
-        },
+        }
         None => Err(DatastoreClientError::NotFound)?,
     }
 }
-
 
 pub fn get_by_property(
     property_name: String,
     property_value: impl Into<DatastoreValue>,
     kind: String,
     limit: Option<i32>,
-    connection: &impl DatastoreConnection
+    connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntityCollection, DatastorersError> {
     let query = build_query_from_property(
         property_name,
         property_value,
         kind,
-        limit.unwrap_or(DEFAULT_PAGE_SIZE)
+        limit.unwrap_or(DEFAULT_PAGE_SIZE),
     );
     get_page(query, connection)
 }
 
 impl<T> ResultCollection<T>
 where
-    T: TryFrom<DatastoreEntity, Error = DatastoreParseError>
+    T: TryFrom<DatastoreEntity, Error = DatastoreParseError>,
 {
-    pub fn get_next_page(self, connection: &impl DatastoreConnection) -> Result<ResultCollection<T>, DatastorersError> {
+    pub fn get_next_page(
+        self,
+        connection: &impl DatastoreConnection,
+    ) -> Result<ResultCollection<T>, DatastorersError> {
         if !self.has_more_results {
             Err(DatastoreClientError::NoMorePages)?
         }
@@ -212,8 +215,8 @@ where
 
 fn commit(
     mutations: Vec<Mutation>,
-    connection: &impl DatastoreConnection
-  ) -> Result<CommitResponse, google_datastore1::Error> {
+    connection: &impl DatastoreConnection,
+) -> Result<CommitResponse, google_datastore1::Error> {
     let client = connection.get_client();
     let projects = client.projects();
     let builder = projects.begin_transaction(
@@ -223,7 +226,7 @@ fn commit(
         connection.get_project_name(),
     );
     let begin_transaction: BeginTransactionResponse = builder.execute()?;
-    
+
     let commit_request = projects.commit(
         CommitRequest {
             mode: None,
@@ -232,11 +235,11 @@ fn commit(
         },
         connection.get_project_name(),
     );
-  
+
     commit_request.execute()
-  }
-  
-  fn key_has_id(key: &Option<Key>) -> Result<bool, DatastoreClientError> {
+}
+
+fn key_has_id(key: &Option<Key>) -> Result<bool, DatastoreClientError> {
     match key {
         Some(k) => {
             if let Some(path) = &k.path {
@@ -245,62 +248,76 @@ fn commit(
                 }
             }
             Ok(false)
-        },
-        None => Err(DatastoreClientError::KeyMissing)
+        }
+        None => Err(DatastoreClientError::KeyMissing),
     }
-  }
+}
 
-  pub fn commit_one(
+fn parse_mutation_result(result: &MutationResult) -> Result<Option<Key>, DatastorersError> {
+    if let Some(conflict_detected) = result.conflict_detected {
+        if conflict_detected {
+            Err(DatastoreClientError::DataConflict)?
+        }
+    }
+    Ok(result.key.clone())
+}
+
+pub fn commit_one(
     entity: DatastoreEntity,
-    connection: &impl DatastoreConnection
-  ) -> Result<DatastoreEntity, DatastorersError> {
+    connection: &impl DatastoreConnection,
+) -> Result<DatastoreEntity, DatastorersError> {
     let is_insert = !key_has_id(&entity.key())?;
+    let base_version = entity.version();
     let mut result_entity = entity.clone();
     let ent: Entity = entity.try_into()?;
 
     let mut mutation = Mutation::default();
-    mutation.upsert = Some(ent);  
+    mutation.upsert = Some(ent);
+    mutation.base_version = base_version;
     let cre: CommitResponse = commit(vec![mutation], connection)?;
-            
-    if is_insert {
-        // The commit result shall contain a key that we can assign to the entity in order to later
-        // be able to update it
-        if let Some(results) = &cre.mutation_results {
-            match results.len() {
-                0 => Err(DatastoreClientError::KeyAssignmentFailed)?,
-                1 => {
-                    let mutation_result = &results[0];
-                    result_entity.set_key(mutation_result.key.clone());
-                },
-                _ => Err(DatastoreClientError::AmbigiousResult)?,
+
+    // The commit result shall contain a key that we can assign to the entity in order to later
+    // be able to update it
+    if let Some(results) = &cre.mutation_results {
+        match results.len() {
+            0 => Err(DatastoreClientError::KeyAssignmentFailed)?,
+            1 => {
+                let assigned_key = parse_mutation_result(&results[0])?;
+                if is_insert {
+                    if let Some(key) = assigned_key {
+                        result_entity.set_key(Some(key));
+                    } else {
+                        Err(DatastoreClientError::KeyAssignmentFailed)?
+                    }
+                }
             }
-        } else {
-            Err(DatastoreClientError::KeyAssignmentFailed)?
+            _ => Err(DatastoreClientError::AmbigiousResult)?,
         }
+    } else {
+        Err(DatastoreClientError::KeyAssignmentFailed)?
     }
-  
     Ok(result_entity)
-  }
-  
-  pub fn delete_one(
+}
+
+pub fn delete_one(
     entity: DatastoreEntity,
-    connection: &impl DatastoreConnection
-  ) -> Result<(), DatastorersError> {
-    let key = entity.key()
-        .ok_or(DatastoreClientError::NotFound)?; // No key to delete
+    connection: &impl DatastoreConnection,
+) -> Result<(), DatastorersError> {
+    let key = entity.key().ok_or(DatastoreClientError::NotFound)?; // No key to delete
 
     let mut mutation = Mutation::default();
     mutation.delete = Some(key);
+    mutation.base_version = entity.version();
     let cre: CommitResponse = commit(vec![mutation], connection)?;
 
     // Assert that we have a commit result
     if let Some(results) = &cre.mutation_results {
         match results.len() {
             0 => Err(DatastoreClientError::DeleteFailed)?,
-            1 => Ok(()), // Success
+            1 => parse_mutation_result(&results[0]).map(|_| ()), // Success
             _ => Err(DatastoreClientError::AmbigiousResult)?,
         }
     } else {
         Err(DatastoreClientError::DeleteFailed)?
     }
-  }
+}

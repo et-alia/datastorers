@@ -1,6 +1,6 @@
-use crate::error::{DatastoreParseError};
+use crate::error::DatastoreParseError;
 
-use google_datastore1::schemas::{ArrayValue, Entity, Key, Value, Query};
+use google_datastore1::schemas::{ArrayValue, Entity, EntityResult, Key, Query, Value};
 
 use std::collections::BTreeMap;
 use std::convert::From;
@@ -90,19 +90,12 @@ impl From<i64> for DatastoreValue {
     }
 }
 
-fn generate_array_value<T, F>(
-    array: Vec<T>,
-    value_generator: F
-) -> DatastoreValue
-    where F: Fn(T) -> Value
+fn generate_array_value<T, F>(array: Vec<T>, value_generator: F) -> DatastoreValue
+where
+    F: Fn(T) -> Value,
 {
     let mut result = DatastoreValue::default();
-    result.array(
-        array
-            .into_iter()
-            .map(value_generator)
-            .collect(),
-    );
+    result.array(array.into_iter().map(value_generator).collect());
     return result;
 }
 
@@ -213,8 +206,7 @@ impl DatastoreProperties {
         self.get_array(key, |v| v.string_value)
     }
 
-    pub fn set_string_array(&mut self, key: &str, value: Vec<String>) 
-    {
+    pub fn set_string_array(&mut self, key: &str, value: Vec<String>) {
         let datastore_value: DatastoreValue = value.into();
         self.0.insert(key.to_string(), datastore_value.0);
     }
@@ -223,8 +215,7 @@ impl DatastoreProperties {
         self.get_array(key, |v| v.integer_value)
     }
 
-    pub fn set_integer_array(&mut self, key: &str, value: Vec<i64>) 
-    {
+    pub fn set_integer_array(&mut self, key: &str, value: Vec<i64>) {
         let datastore_value: DatastoreValue = value.into();
         self.0.insert(key.to_string(), datastore_value.0);
     }
@@ -233,21 +224,23 @@ impl DatastoreProperties {
         self.get_array(key, |v| v.boolean_value)
     }
 
-    pub fn set_bool_array(&mut self, key: &str, value: Vec<bool>) 
-    {
+    pub fn set_bool_array(&mut self, key: &str, value: Vec<bool>) {
         let datastore_value: DatastoreValue = value.into();
         self.0.insert(key.to_string(), datastore_value.0);
-    }    
+    }
 
     fn get_array<T, F>(&mut self, key: &str, extractor: F) -> Result<Vec<T>, DatastoreParseError>
-        where F: Fn(Value) -> Option<T>
+    where
+        F: Fn(Value) -> Option<T>,
     {
         match self.0.remove(key) {
             Some(value) => match value.array_value {
                 Some(array_value) => match array_value.values {
                     Some(values) => values
                         .into_iter()
-                        .map(|v| extractor(v).ok_or_else(|| DatastoreParseError::InvalidArrayValueFormat))
+                        .map(|v| {
+                            extractor(v).ok_or_else(|| DatastoreParseError::InvalidArrayValueFormat)
+                        })
                         .collect(),
                     None => Ok(vec![]), // Empty array
                 },
@@ -273,14 +266,32 @@ impl TryFrom<DatastoreEntity> for DatastoreProperties {
 // DatastoreEntity
 //
 #[derive(Debug, Clone)]
-pub struct DatastoreEntity(Entity);
+pub struct EntityMeta {
+    version: Option<i64>,
+}
+
+impl Default for EntityMeta {
+    fn default() -> Self {
+        EntityMeta { version: None }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DatastoreEntity(Entity, EntityMeta);
 
 impl DatastoreEntity {
-    pub fn from(key: Option<Key>, properties: DatastoreProperties) -> DatastoreEntity {
-        DatastoreEntity(Entity {
-            key,
-            properties: Some(properties.0),
-        })
+    pub fn from(
+        key: Option<Key>,
+        properties: DatastoreProperties,
+        version: Option<i64>,
+    ) -> DatastoreEntity {
+        DatastoreEntity(
+            Entity {
+                key,
+                properties: Some(properties.0),
+            },
+            EntityMeta { version },
+        )
     }
 
     pub fn key(&self) -> Option<Key> {
@@ -294,11 +305,31 @@ impl DatastoreEntity {
     pub fn set_key(&mut self, key: Option<Key>) {
         self.0.key = key;
     }
+
+    pub fn version(&self) -> Option<i64> {
+        self.1.version
+    }
 }
 
 impl Display for DatastoreEntity {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:#?}", self.0)
+    }
+}
+
+impl TryFrom<EntityResult> for DatastoreEntity {
+    type Error = DatastoreParseError;
+
+    fn try_from(entity_result: EntityResult) -> Result<Self, Self::Error> {
+        let version = entity_result.version;
+        if let Some(entity) = entity_result.entity {
+            let entity_properties = entity.properties.ok_or(DatastoreParseError::NoProperties)?;
+            let props = DatastoreProperties::from_map(entity_properties);
+
+            Ok(DatastoreEntity::from(entity.key, props, version))
+        } else {
+            Err(DatastoreParseError::NoResult)?
+        }
     }
 }
 
@@ -308,7 +339,7 @@ impl TryFrom<Entity> for DatastoreEntity {
     fn try_from(entity: Entity) -> Result<Self, Self::Error> {
         let entity_properties = entity.properties.ok_or(DatastoreParseError::NoProperties)?;
         let props = DatastoreProperties::from_map(entity_properties);
-        Ok(DatastoreEntity::from(entity.key, props))
+        Ok(DatastoreEntity::from(entity.key, props, None))
     }
 }
 
@@ -336,7 +367,6 @@ pub struct DatastoreEntityCollection {
     has_more_results: bool,
 }
 
-
 impl Default for DatastoreEntityCollection {
     fn default() -> Self {
         DatastoreEntityCollection {
@@ -348,14 +378,12 @@ impl Default for DatastoreEntityCollection {
     }
 }
 
-
-
 impl DatastoreEntityCollection {
     pub fn from_result(
         entities: Vec<DatastoreEntity>,
         query: Query,
         end_cursor: String,
-        has_more_results: bool
+        has_more_results: bool,
     ) -> DatastoreEntityCollection {
         DatastoreEntityCollection {
             entities,
@@ -374,14 +402,16 @@ pub struct ResultCollection<T> {
     pub has_more_results: bool,
 }
 
-impl<T> TryFrom<DatastoreEntityCollection> for ResultCollection<T> 
+impl<T> TryFrom<DatastoreEntityCollection> for ResultCollection<T>
 where
-    T: TryFrom<DatastoreEntity, Error = DatastoreParseError>
+    T: TryFrom<DatastoreEntity, Error = DatastoreParseError>,
 {
     type Error = DatastoreParseError;
 
     fn try_from(collection: DatastoreEntityCollection) -> Result<Self, Self::Error> {
-        let result_items: Vec<T> = collection.entities.into_iter()
+        let result_items: Vec<T> = collection
+            .entities
+            .into_iter()
             .map(T::try_from)
             .collect::<Result<Vec<T>, DatastoreParseError>>()?;
         Ok(ResultCollection {

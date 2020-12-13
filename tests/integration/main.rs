@@ -15,6 +15,9 @@ pub struct TestEntity {
     #[key]
     pub key: Option<Key>,
 
+    #[version]
+    pub version: Option<i64>,
+
     #[indexed]
     #[property = "Name"]
     pub prop_string: String,
@@ -83,6 +86,7 @@ fn generate_random_int() -> i64 {
 fn generate_random_entity() -> TestEntity {
     TestEntity {
         key: None,
+        version: None,
         prop_string: generate_random_string(10),
         prop_bool: generate_random_bool(),
         prop_int: generate_random_int(),
@@ -466,5 +470,70 @@ fn test_optional_values() -> Result<(), DatastorersError> {
    let empty_vec: Vec<String> = vec![];
    assert_eq!(&fetched_non_optional.prop_string_array, &empty_vec);
 
+    Ok(())
+}
+
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_coliding_update() -> Result<(), DatastorersError> {
+    let connection = create_test_connection();
+    // Insert one entity
+    let inserted = generate_random_entity().commit(&connection)?;
+    let inserted_id = inserted.key.unwrap().path.unwrap()[0].id.unwrap();
+
+    // Go fetch it two times (and change both fetched entities)
+    let mut a = TestEntity::get_one_by_id(inserted_id, &connection)?;
+    let prop_int_a = generate_random_int();
+    a.prop_int = prop_int_a;
+
+    let mut b = TestEntity::get_one_by_id(inserted_id, &connection)?;
+    b.prop_int = generate_random_int();
+
+    // Save the forst one => we expect success
+    a.commit(&connection)?;
+
+    // Save the second one => we expect error (collision)
+    assert_client_error(
+        b.commit(&connection),
+        DatastoreClientError::DataConflict
+    );
+
+    // Fetch one last time, the changes in a shall have been saved
+    let fetched = TestEntity::get_one_by_id(inserted_id, &connection)?;
+    assert_eq!(prop_int_a, fetched.prop_int);
+    
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_coliding_delete() -> Result<(), DatastorersError> {
+    let connection = create_test_connection();
+    // Insert one entity
+    let inserted = generate_random_entity().commit(&connection)?;
+    let inserted_id = inserted.key.unwrap().path.unwrap()[0].id.unwrap();
+
+    // Go fetch it two times (and change both fetched entities)
+    let mut a = TestEntity::get_one_by_id(inserted_id, &connection)?;
+    let prop_int_a = generate_random_int();
+    a.prop_int = prop_int_a;
+
+    let mut b = TestEntity::get_one_by_id(inserted_id, &connection)?;
+    b.prop_int = generate_random_int();
+
+    // Save the forst one => we expect success
+    a.commit(&connection)?;
+
+    // Save the second one => we expect error (collision)
+    assert_client_error(
+        b.delete(&connection),
+        DatastoreClientError::DataConflict
+    );
+
+    // Fetch one last time, the changes in a shall have been saved
+    let fetched = TestEntity::get_one_by_id(inserted_id, &connection)?;
+    assert_eq!(prop_int_a, fetched.prop_int);
+    
     Ok(())
 }

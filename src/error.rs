@@ -1,7 +1,4 @@
-
-
 use thiserror::Error;
-
 
 //
 // DatastoreEntity related errors
@@ -12,10 +9,11 @@ pub enum DatastoreParseError {
     NoSuchValue,
     #[error("no properties found on entity")]
     NoProperties,
+    #[error("no data in result")]
+    NoResult,
     #[error("unexpected type in array item")]
     InvalidArrayValueFormat,
 }
-
 
 #[derive(Error, Debug, PartialEq)]
 pub enum DatastoreClientError {
@@ -29,6 +27,8 @@ pub enum DatastoreClientError {
     KeyAssignmentFailed,
     #[error("delete operation failed")]
     DeleteFailed,
+    #[error("data conflict detected in commit")]
+    DataConflict,
     #[error("unexpected response data")]
     ApiDataError,
     #[error("no more pages to fetch")]
@@ -42,5 +42,5 @@ pub enum DatastorersError {
     #[error(transparent)]
     DatastoreError(#[from] google_datastore1::Error),
     #[error(transparent)]
-    DatastoreClientError(#[from] DatastoreClientError)
+    DatastoreClientError(#[from] DatastoreClientError),
 }
