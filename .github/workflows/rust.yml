@@ -16,7 +16,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - uses: google-github-actions/setup-gcloud@master
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        export_default_credentials: true
     - name: Build
       run: cargo build --verbose
     - name: Run tests
-      run: cargo test --verbose
+      env: # Or as an environment variable
+        TEST_PROJECT_NAME: ${{ secrets.TEST_PROJECT_NAME }}
+      run: cargo test --verbose --features integration_tests
