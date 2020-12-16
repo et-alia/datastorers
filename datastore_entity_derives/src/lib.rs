@@ -32,6 +32,7 @@ struct FieldMeta {
     entity_getter: Option<EntityGetter>,
 }
 
+
 fn get_generic_argument(typepath: &TypePath) -> Option<&TypePath> {
     let type_params = &typepath.path.segments.first().unwrap().arguments;
     let generic_arg = match type_params {
@@ -163,11 +164,12 @@ fn recurse_generic(
     }
 }
 
-#[proc_macro_derive(DatastoreManaged, attributes(kind, key, indexed, property, page_size))]
+#[proc_macro_derive(DatastoreManaged, attributes(kind, key, indexed, property, page_size, version))]
 pub fn datastore_managed(input: TokenStream) -> TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
 
     let mut kind: Option<String> = None;
+    let mut version_field: Option<String> = None;
     let mut key_field: Option<String> = None;
     let mut page_size: Expr = parse_expr("None");
 
@@ -208,6 +210,10 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                                     key_field =
                                         Some(field.ident.as_ref().unwrap().clone().to_string());
                                 },
+                                "version" => {
+                                  version_field =
+                                        Some(field.ident.as_ref().unwrap().clone().to_string());
+                                },
                                 "indexed" => {
                                     indexed = true;
                                 },
@@ -232,6 +238,9 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                     Type::Path(p) => {
                         let ident = field.ident.as_ref().unwrap().clone();
                         let struct_property_name = ident.to_string();
+                        if &struct_property_name == version_field.as_ref().unwrap_or(&String::from("")) {
+                            continue; // Ignore version field if set
+                        }
                         let datastore_property_name = property_name.unwrap_or(struct_property_name.clone());
 
                         if let Some(property_data) = recurse_property_path(&p) {
@@ -271,9 +280,15 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
 
     let kind_str = kind.unwrap();
     let key_field_str = key_field.unwrap();
-    let key_field_expr = parse_expr(&key_field_str);
     let self_key_field_expr = parse_expr(&format!("self.{}.as_ref()", key_field_str));
     let entity_key_field_expr = parse_expr(&format!("entity.{}", key_field_str));
+    
+    let mut entity_version = parse_expr("None");
+    let mut meta_field_assignements = vec![parse_expr(&format!("{}: key", &key_field_str))];
+    if let Some(version) = version_field {
+        meta_field_assignements.push(parse_expr(&format!("{}: version", &version)));
+        entity_version = parse_expr(&format!("entity.{}", &version));
+    }
 
     let entity_getters = fields
         .iter()
@@ -314,7 +329,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #kind_str
             }
 
-            pub fn id(&self) -> core::option::Option<&google_datastore1::schemas::Key> {
+            pub fn id(&self) -> std::option::Option<&google_datastore1::schemas::Key> {
                 #self_key_field_expr
             }
 
@@ -349,7 +364,6 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             {
                 let result_entity = datastore_entity::commit_one(
                     self.into(),
-                    #kind_str.to_string(),
                     connection
                 )?;
                 let result: #name = result_entity
@@ -368,8 +382,8 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
 
             fn try_from(mut entity: datastore_entity::DatastoreEntity) -> Result<Self, Self::Error> {
                 let key = entity.key();
+                let version = entity.version();
                 let mut properties = datastore_entity::DatastoreProperties::try_from(entity)?;
-
                 fn optional_ok<T>(val: T) -> Result<Option<T>, datastore_entity::DatastoreParseError> {
                     Ok(Some(val))
                 }
@@ -383,7 +397,9 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 }
                 Ok(
                     #name {
-                        #key_field_expr: key,
+                        #(
+                            #meta_field_assignements,
+                        )*
                         #(
                             #idents: #into_properties?,
                         )*
@@ -398,9 +414,22 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #(
                     #from_properties;
                 )*
+
+                fn generate_empty_key() -> std::option::Option<google_datastore1::schemas::Key> {
+                    Some(google_datastore1::schemas::Key {
+                        partition_id: None,
+                        path: Some(vec![google_datastore1::schemas::PathElement {
+                            id: None,
+                            kind: Some(#kind_str.to_string()),
+                            name: None,
+                        }]),
+                    })
+                }
+
                 datastore_entity::DatastoreEntity::from(
-                    #entity_key_field_expr,
+                    #entity_key_field_expr.or_else(generate_empty_key),
                     properties,
+                    #entity_version,
                 )
             }
         }        
