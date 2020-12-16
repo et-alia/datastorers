@@ -110,7 +110,7 @@ let t = TestEntity {
     version: None,
     name: String::from("my string),
 }
-transaction.save(t)
+transaction.push_save(t)
 ```
 
 Commit the transaction:
