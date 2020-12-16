@@ -193,7 +193,7 @@ fn test_get_by_property() -> Result<(), DatastorersError> {
     // Multiple results
     assert_client_error(
         TestEntity::get_one_by_prop_string(duplicated_entity.prop_string, &connection),
-        DatastoreClientError::AmbigiousResult
+        DatastoreClientError::AmbiguousResult
     );
 
     // Success
@@ -328,7 +328,7 @@ fn test_get_by_array_property() -> Result<(), DatastorersError> {
     // Fetch for string_value_b => shall return multiple entities => error
     assert_client_error(
         TestEntity::get_one_by_prop_string_array(string_value_b, &connection),
-        DatastoreClientError::AmbigiousResult
+        DatastoreClientError::AmbiguousResult
     );
 
     Ok(())
@@ -525,7 +525,7 @@ fn test_coliding_delete() -> Result<(), DatastorersError> {
     // Save the forst one => we expect success
     a.commit(&connection)?;
 
-    // Save the second one => we expect error (collision)
+    // Delete the second one => we expect error (collision)
     assert_client_error(
         b.delete(&connection),
         DatastoreClientError::DataConflict
@@ -558,12 +558,12 @@ fn test_transaction_with_update() -> Result<(), DatastorersError> {
     let mut a = TestEntity::get_one_by_id(inserted_id_a, &transaction)?;
     let prop_int_a = generate_random_int();
     a.prop_int = prop_int_a;
-    transaction.save(a)?;
+    transaction.push_save(a)?;
 
     let mut b = TestEntity::get_one_by_id(inserted_id_b, &transaction)?;
     let prop_int_b = generate_random_int();
     b.prop_int = prop_int_b;
-    transaction.save(b)?;
+    transaction.push_save(b)?;
 
     // Transaction not commited, a and b shall have their original values
     let fetched_a = TestEntity::get_one_by_id(inserted_id_a, &connection)?;

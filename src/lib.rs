@@ -58,7 +58,7 @@ pub fn get_one_by_id(
                 let result: DatastoreEntity = res.try_into()?;
                 Ok(result)
             }
-            _ => Err(DatastoreClientError::AmbigiousResult)?,
+            _ => Err(DatastoreClientError::AmbiguousResult)?,
         },
         None => Err(DatastoreClientError::NotFound)?,
     }
@@ -121,7 +121,7 @@ pub fn get_one_by_property(
                 .more_results
                 .ok_or(DatastoreClientError::ApiDataError)?;
             if more_results != QueryResultBatchMoreResults::NoMoreResults {
-                Err(DatastoreClientError::AmbigiousResult)?
+                Err(DatastoreClientError::AmbiguousResult)?
             }
             if let Some(mut found) = batch.entity_results {
                 match found.len() {
@@ -131,7 +131,7 @@ pub fn get_one_by_property(
                         let result: DatastoreEntity = res.try_into()?;
                         Ok(result)
                     }
-                    _ => Err(DatastoreClientError::AmbigiousResult)?,
+                    _ => Err(DatastoreClientError::AmbiguousResult)?,
                 }
             } else {
                 Err(DatastoreClientError::NotFound)?
@@ -299,7 +299,7 @@ pub fn commit_one(
                     }
                 }
             }
-            _ => Err(DatastoreClientError::AmbigiousResult)?,
+            _ => Err(DatastoreClientError::AmbiguousResult)?,
         }
     } else {
         Err(DatastoreClientError::KeyAssignmentFailed)?
@@ -323,7 +323,7 @@ pub fn delete_one(
         match results.len() {
             0 => Err(DatastoreClientError::DeleteFailed)?,
             1 => parse_mutation_result(&results[0]).map(|_| ()), // Success
-            _ => Err(DatastoreClientError::AmbigiousResult)?,
+            _ => Err(DatastoreClientError::AmbiguousResult)?,
         }
     } else {
         Err(DatastoreClientError::DeleteFailed)?

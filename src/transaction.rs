@@ -60,7 +60,7 @@ impl TransactionConnection<'_> {
     })
   }
 
-  pub fn save(&mut self, item: impl Into<DatastoreEntity>) -> Result<(), DatastorersError> {
+  pub fn push_save(&mut self, item: impl Into<DatastoreEntity>) -> Result<(), DatastorersError> {
     let entity: DatastoreEntity = item.into();
     let base_version = entity.version();
     let ent: Entity = entity.try_into()?;
@@ -74,7 +74,7 @@ impl TransactionConnection<'_> {
     Ok(())
   }
 
-  pub fn delete(&mut self, item: impl Into<DatastoreEntity>) -> Result<(), DatastorersError> {
+  pub fn push_delete(&mut self, item: impl Into<DatastoreEntity>) -> Result<(), DatastorersError> {
     let entity: DatastoreEntity = item.into();
     let base_version = entity.version();
     let mut mutation = Mutation::default();
