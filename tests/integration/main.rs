@@ -1,7 +1,7 @@
 mod connection;
 use crate::connection::{create_test_connection};
 use datastore_entity::{DatastoreManaged, DatastoreClientError, DatastoreParseError, DatastorersError};
-
+use datastore_entity::transaction::{TransactionConnection};
 use google_datastore1::schemas::Key;
 use rand::{thread_rng, Rng};
 use rand::distributions::Alphanumeric;
@@ -535,5 +535,51 @@ fn test_coliding_delete() -> Result<(), DatastorersError> {
     let fetched = TestEntity::get_one_by_id(inserted_id, &connection)?;
     assert_eq!(prop_int_a, fetched.prop_int);
     
+    Ok(())
+}
+
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_transaction_with_update() -> Result<(), DatastorersError> {
+    let connection = create_test_connection();
+
+    // Create two entities
+    let inserted = generate_random_entity().commit(&connection)?;
+    let inserted_id_a = inserted.key.unwrap().path.unwrap()[0].id.unwrap();
+    let original_prop_int_a = inserted.prop_int;
+    let inserted = generate_random_entity().commit(&connection)?;
+    let inserted_id_b = inserted.key.unwrap().path.unwrap()[0].id.unwrap();
+    let original_prop_int_b = inserted.prop_int;
+
+    // Create a transaction, use the transaction to fetch and modify both entities
+    let mut transaction = TransactionConnection::begin_transaction(&connection)?;
+    
+    let mut a = TestEntity::get_one_by_id(inserted_id_a, &transaction)?;
+    let prop_int_a = generate_random_int();
+    a.prop_int = prop_int_a;
+    transaction.save(a)?;
+
+    let mut b = TestEntity::get_one_by_id(inserted_id_b, &transaction)?;
+    let prop_int_b = generate_random_int();
+    b.prop_int = prop_int_b;
+    transaction.save(b)?;
+
+    // Transaction not commited, a and b shall have their original values
+    let fetched_a = TestEntity::get_one_by_id(inserted_id_a, &connection)?;
+    assert_eq!(original_prop_int_a, fetched_a.prop_int);
+    let fetched_b = TestEntity::get_one_by_id(inserted_id_b, &connection)?;
+    assert_eq!(original_prop_int_b, fetched_b.prop_int);
+
+    // Commit transaction
+    transaction.commit()?;
+
+    // Fetch and validate that both items got updated
+    let fetched_a = TestEntity::get_one_by_id(inserted_id_a, &connection)?;
+    assert_eq!(fetched_a.prop_int, prop_int_a);
+
+    let fetched_b = TestEntity::get_one_by_id(inserted_id_b, &connection)?;
+    assert_eq!(fetched_b.prop_int, prop_int_b);
+
     Ok(())
 }

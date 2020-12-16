@@ -1,6 +1,7 @@
 pub mod connection;
 mod entity;
 pub mod error;
+pub mod transaction;
 pub use crate::connection::DatastoreConnection;
 pub use crate::entity::{
     DatastoreEntity, DatastoreEntityCollection, DatastoreProperties, DatastoreValue,
@@ -14,7 +15,7 @@ use google_datastore1::schemas::{
     BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
     Filter, Key, KindExpression, LookupRequest, LookupResponse, Mutation, MutationResult,
     PathElement, PropertyFilter, PropertyFilterOp, PropertyReference, Query,
-    QueryResultBatchMoreResults, RunQueryRequest, RunQueryResponse, Value,
+    QueryResultBatchMoreResults, RunQueryRequest, RunQueryResponse, Value, ReadOptions
 };
 
 use std::convert::TryFrom;
@@ -40,7 +41,10 @@ pub fn get_one_by_id(
     };
     let req = LookupRequest {
         keys: Some(vec![key]),
-        read_options: None,
+        read_options: Some(ReadOptions {
+            transaction: connection.get_transaction_id(),
+            read_consistency: None,
+        })
     };
     let resp: LookupResponse = projects
         .lookup(req, connection.get_project_name())
@@ -102,6 +106,10 @@ pub fn get_one_by_property(
         kind,
         1,
     ));
+    req.read_options = Some(ReadOptions{
+        transaction: connection.get_transaction_id(),
+        read_consistency: None,
+    });
 
     let resp: RunQueryResponse = projects
         .run_query(req, connection.get_project_name())
