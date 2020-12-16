@@ -1,6 +1,6 @@
 # Datastorers
 
-Type safe Google Datastore access in rust!
+Type safe Google Datastore access in Rust!
 
 ## Usage
 
@@ -8,7 +8,7 @@ Type safe Google Datastore access in rust!
 
 Derive `DatastoreManaged` on a struct:
 
-```
+```rust
 #[derive(DatastoreManaged, Clone, Debug)]
 #[kind = "Test"]
 #[page_size = 2]
@@ -25,15 +25,15 @@ pub struct TestEntity {
 }
 ```
 
-Read an datastore entity:
+Read a Datastore entity:
 
-```
+```rust
 let entity_instance = TestEntity::get_one_by_name(String::from("test-name", &connection))?;
 ```
 
 Commit changes:
 
-```
+```rust
 entity_instance.commit(&connection);
 ```
 
@@ -58,8 +58,8 @@ See example implementation in the [integration tests](tests/integration/connecti
 
 A new entity is added to Google Datastore if a struct with `key` `None` is committed:
 
-```
-let = t TestEntity {
+```rust
+let t = TestEntity {
     key: None,
     version: None,
     name: String::from("my string),
@@ -73,7 +73,7 @@ The struct deriving the `DatastoreManaged` macro will always contain the `get_on
 
 For each property that has the indexed attribute, getters will be generated based on the property name, for the example struct above will have:
 
-```
+```rust
 TestEntity::get_one_by_name(value: String, connection: &impl DatastoreConnection) -> Result<TestEntity, DatastorersError>
 
 TestEntity::get_by_name(value: String, connection: &impl DatastoreConnection) -> Result<ResultCollection<TestEntity>, DatastorersError>
@@ -84,7 +84,7 @@ TestEntity::get_by_name(value: String, connection: &impl DatastoreConnection) ->
 
 The struct deriving the `DatastoreManaged` macro will get methods for commiting changes and to delete the entity:
 
-```
+```rust
 TestEntity::commit(connection: &impl DatastoreConnection) -> Result<TestEntity, DatastorersError>
 
 TestEntity::delete(connection: &impl DatastoreConnection) -> Result<(), DatastorersError>
@@ -98,24 +98,24 @@ The transactions can be used to commit multiple update/create/delete modificatio
 
 Crete a transaction:
 
-```
+```rust
 let mut transaction = TransactionConnection::begin_transaction(&connection)?;
 ```
 
 Add some entities that shall be saved when the transaction is committed:
 
-```
-let = t TestEntity {
+```rust
+let t = TestEntity {
     key: None,
     version: None,
     name: String::from("my string),
 }
-ttransaction.save(t)
+transaction.save(t)
 ```
 
 Commit the transaction:
 
-```
+```rust
 transaction.commit()?;
 ```
 
@@ -128,13 +128,13 @@ The tests are controlled via a feature flag, if flag not is set when running tes
 
 So, to run all local tests:
 
-```
+```shell
 cargo run test
 ```
 
 To also include integration tests:
 
-```
+```shell
 cargo test --features integration_tests
 ```
 
