@@ -20,7 +20,7 @@ pub enum DatastoreClientError {
     #[error("entity not found")]
     NotFound,
     #[error("multiple entities found, single result expected")]
-    AmbigiousResult,
+    AmbiguousResult,
     #[error("missing key, entity cannot be commited")]
     KeyMissing,
     #[error("failed to assign key to inserted entity")]
