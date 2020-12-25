@@ -142,7 +142,8 @@ In order for the integration tests to work, some configuration is required:
 
 #### 1. GCP Project configuration:
 
-The project used for testing must have a Datastore Entity with the following properties:
+The project used for testing must have a Datastore Entity with the kind `Test`,
+that has the following properties:
 
 * **Name** - Type string, indexed
 * **bool_property** - Type boolean, not indexed

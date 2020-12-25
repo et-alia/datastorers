@@ -1,5 +1,3 @@
-// Based on this blog post
-// https://cprimozic.net/blog/writing-a-hashmap-to-struct-procedural-macro-in-rust/
 #![recursion_limit = "128"]
 
 extern crate proc_macro;
@@ -333,17 +331,17 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #self_key_field_expr
             }
 
-            pub fn get_one_by_id(id: i64, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
+            pub async fn get_one_by_id(id: i64, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
             {
-                let datastore_entity = datastore_entity::get_one_by_id(id, #kind_str.to_string(), connection)?;
+                let datastore_entity = datastore_entity::get_one_by_id(id, #kind_str.to_string(), connection).await?;
                 let result: #name = datastore_entity
                     .try_into()?;
                 return Ok(result)
             }
             #(
-                pub fn #entity_getters(value: #entity_getter_key_types, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
+                pub async fn #entity_getters(value: #entity_getter_key_types, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
                 {
-                    let datastore_entity = datastore_entity::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection)?;
+                    let datastore_entity = datastore_entity::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection).await?;
                     let result: #name = datastore_entity
                         .try_into()?;
                     return Ok(result)
@@ -351,29 +349,29 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             )*
 
             #(
-                pub fn #entity_collection_getters(value: #entity_getter_key_types, connection: &impl datastore_entity::DatastoreConnection) -> Result<datastore_entity::ResultCollection<#name>, datastore_entity::DatastorersError>
+                pub async fn #entity_collection_getters(value: #entity_getter_key_types, connection: &impl datastore_entity::DatastoreConnection) -> Result<datastore_entity::ResultCollection<#name>, datastore_entity::DatastorersError>
                 {
-                    let entities = datastore_entity::get_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), #page_size, connection)?;
+                    let entities = datastore_entity::get_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), #page_size, connection).await?;
                     let result: datastore_entity::ResultCollection<#name> = entities
                         .try_into()?;
                     return Ok(result)
                 }
             )*
 
-            pub fn commit(self, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
+            pub async fn commit(self, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
             {
                 let result_entity = datastore_entity::commit_one(
                     self.into(),
                     connection
-                )?;
+                ).await?;
                 let result: #name = result_entity
                     .try_into()?;
                 return Ok(result)
             }
 
-            pub fn delete(self, connection: &impl datastore_entity::DatastoreConnection) -> Result<(), datastore_entity::DatastorersError>
+            pub async fn delete(self, connection: &impl datastore_entity::DatastoreConnection) -> Result<(), datastore_entity::DatastorersError>
             {
-                datastore_entity::delete_one(self.into(), connection)
+                datastore_entity::delete_one(self.into(), connection).await
             }
         }
 

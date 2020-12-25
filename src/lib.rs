@@ -15,7 +15,7 @@ use google_datastore1::schemas::{
     BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
     Filter, Key, KindExpression, LookupRequest, LookupResponse, Mutation, MutationResult,
     PathElement, PropertyFilter, PropertyFilterOp, PropertyReference, Query,
-    QueryResultBatchMoreResults, RunQueryRequest, RunQueryResponse, Value, ReadOptions
+    QueryResultBatchMoreResults, ReadOptions, RunQueryRequest, RunQueryResponse, Value,
 };
 
 use std::convert::TryFrom;
@@ -23,7 +23,7 @@ use std::convert::TryInto;
 
 const DEFAULT_PAGE_SIZE: i32 = 50;
 
-pub fn get_one_by_id(
+pub async fn get_one_by_id(
     id: i64,
     kind: String,
     connection: &impl DatastoreConnection,
@@ -44,11 +44,12 @@ pub fn get_one_by_id(
         read_options: Some(ReadOptions {
             transaction: connection.get_transaction_id(),
             read_consistency: None,
-        })
+        }),
     };
     let resp: LookupResponse = projects
         .lookup(req, connection.get_project_name())
-        .execute()?;
+        .execute()
+        .await?;
 
     match resp.found {
         Some(mut found) => match found.len() {
@@ -91,7 +92,7 @@ fn build_query_from_property(
     return query;
 }
 
-pub fn get_one_by_property(
+pub async fn get_one_by_property(
     property_name: String,
     property_value: impl Into<DatastoreValue>,
     kind: String,
@@ -106,14 +107,15 @@ pub fn get_one_by_property(
         kind,
         1,
     ));
-    req.read_options = Some(ReadOptions{
+    req.read_options = Some(ReadOptions {
         transaction: connection.get_transaction_id(),
         read_consistency: None,
     });
 
     let resp: RunQueryResponse = projects
         .run_query(req, connection.get_project_name())
-        .execute()?;
+        .execute()
+        .await?;
 
     match resp.batch {
         Some(batch) => {
@@ -141,7 +143,7 @@ pub fn get_one_by_property(
     }
 }
 
-fn get_page(
+async fn get_page(
     query: Query,
     connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntityCollection, DatastorersError> {
@@ -151,7 +153,8 @@ fn get_page(
     req.query = Some(query.clone());
     let resp: RunQueryResponse = projects
         .run_query(req, connection.get_project_name())
-        .execute()?;
+        .execute()
+        .await?;
 
     match resp.batch {
         Some(batch) => {
@@ -184,7 +187,7 @@ fn get_page(
     }
 }
 
-pub fn get_by_property(
+pub async fn get_by_property(
     property_name: String,
     property_value: impl Into<DatastoreValue>,
     kind: String,
@@ -197,14 +200,14 @@ pub fn get_by_property(
         kind,
         limit.unwrap_or(DEFAULT_PAGE_SIZE),
     );
-    get_page(query, connection)
+    get_page(query, connection).await
 }
 
 impl<T> ResultCollection<T>
 where
     T: TryFrom<DatastoreEntity, Error = DatastoreParseError>,
 {
-    pub fn get_next_page(
+    pub async fn get_next_page(
         self,
         connection: &impl DatastoreConnection,
     ) -> Result<ResultCollection<T>, DatastorersError> {
@@ -215,13 +218,13 @@ where
         let end_cursor = self.end_cursor.ok_or(DatastoreClientError::ApiDataError)?;
         query.start_cursor = Some(end_cursor);
 
-        let page: DatastoreEntityCollection = get_page(query, connection)?;
+        let page: DatastoreEntityCollection = get_page(query, connection).await?;
         let res: ResultCollection<T> = page.try_into()?;
         return Ok(res);
     }
 }
 
-fn commit(
+async fn commit(
     mutations: Vec<Mutation>,
     connection: &impl DatastoreConnection,
 ) -> Result<CommitResponse, google_datastore1::Error> {
@@ -233,7 +236,7 @@ fn commit(
         },
         connection.get_project_name(),
     );
-    let begin_transaction: BeginTransactionResponse = builder.execute()?;
+    let begin_transaction: BeginTransactionResponse = builder.execute().await?;
 
     let commit_request = projects.commit(
         CommitRequest {
@@ -244,7 +247,7 @@ fn commit(
         connection.get_project_name(),
     );
 
-    commit_request.execute()
+    commit_request.execute().await
 }
 
 fn key_has_id(key: &Option<Key>) -> Result<bool, DatastoreClientError> {
@@ -270,7 +273,7 @@ fn parse_mutation_result(result: &MutationResult) -> Result<Option<Key>, Datasto
     Ok(result.key.clone())
 }
 
-pub fn commit_one(
+pub async fn commit_one(
     entity: DatastoreEntity,
     connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntity, DatastorersError> {
@@ -282,7 +285,7 @@ pub fn commit_one(
     let mut mutation = Mutation::default();
     mutation.upsert = Some(ent);
     mutation.base_version = base_version;
-    let cre: CommitResponse = commit(vec![mutation], connection)?;
+    let cre: CommitResponse = commit(vec![mutation], connection).await?;
 
     // The commit result shall contain a key that we can assign to the entity in order to later
     // be able to update it
@@ -307,7 +310,7 @@ pub fn commit_one(
     Ok(result_entity)
 }
 
-pub fn delete_one(
+pub async fn delete_one(
     entity: DatastoreEntity,
     connection: &impl DatastoreConnection,
 ) -> Result<(), DatastorersError> {
@@ -316,7 +319,7 @@ pub fn delete_one(
     let mut mutation = Mutation::default();
     mutation.delete = Some(key);
     mutation.base_version = entity.version();
-    let cre: CommitResponse = commit(vec![mutation], connection)?;
+    let cre: CommitResponse = commit(vec![mutation], connection).await?;
 
     // Assert that we have a commit result
     if let Some(results) = &cre.mutation_results {
