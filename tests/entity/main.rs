@@ -1,10 +1,10 @@
+use chrono::{NaiveDateTime, Utc};
+use datastore_entity::deserialize::Deserialize;
+use datastore_entity::serialize::Serialize;
 use datastore_entity::{DatastoreEntity, DatastoreManaged, DatastorersError};
+use float_cmp::approx_eq;
 use google_datastore1::schemas::Key;
 use std::convert::TryInto;
-use chrono::{NaiveDateTime, Utc};
-use datastore_entity::serialize::Serialize;
-use datastore_entity::deserialize::Deserialize;
-
 
 #[derive(DatastoreManaged, Clone, Debug)]
 #[kind = "thingy"]
@@ -49,11 +49,11 @@ fn test_version() -> Result<(), DatastorersError> {
     };
 
     // From VersionedThing to DatastoreEntity, version shall be included in entity
-    let entity: DatastoreEntity = versioned_thing.clone().try_into()?;
+    let entity: DatastoreEntity = versioned_thing.try_into()?;
     assert_eq!(Some(test_version), entity.version());
 
     // And back again
-    let thing_is_back: VersionedThing = entity.clone().try_into().unwrap();
+    let thing_is_back: VersionedThing = entity.try_into().unwrap();
     assert_eq!(Some(test_version), thing_is_back.thing_version);
     assert_eq!("StrStr", thing_is_back.prop_string);
     Ok(())
@@ -77,14 +77,18 @@ fn into_datastore_entity_and_back() -> Result<(), DatastorersError> {
 
     let entity: DatastoreEntity = thing.clone().try_into()?;
 
-    let thing_is_back: Thing = entity.clone().try_into().unwrap();
+    let thing_is_back: Thing = entity.try_into().unwrap();
 
     assert_eq!(thing.prop_string, thing_is_back.prop_string);
     assert_eq!("StrStr", thing_is_back.prop_string);
     assert_eq!(thing.prop_integer, thing_is_back.prop_integer);
     assert_eq!(777, thing_is_back.prop_integer);
-    assert_eq!(thing.prop_double, thing_is_back.prop_double);
-    assert_eq!(987.12, thing_is_back.prop_double);
+    assert!(approx_eq!(
+        f64,
+        thing.prop_double,
+        thing_is_back.prop_double
+    ));
+    assert!(approx_eq!(f64, 987.12, thing_is_back.prop_double));
     assert_eq!(thing.prop_boolean, thing_is_back.prop_boolean);
     assert_eq!(false, thing_is_back.prop_boolean);
     assert_eq!(

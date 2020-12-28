@@ -1,4 +1,5 @@
 #![recursion_limit = "128"]
+#![allow(clippy::single_match)]
 
 extern crate proc_macro;
 
@@ -28,8 +29,8 @@ struct FieldMeta {
 
 fn build_field_meta(
     ident: Ident,
-    datastore_property_name: &String,
-    struct_property_name: &String,
+    datastore_property_name: &str,
+    struct_property_name: &str,
     indexed: bool,
 ) -> FieldMeta {
     let into_property_expr_string = format!("properties.get(\"{}\")", datastore_property_name);
@@ -49,7 +50,7 @@ fn build_field_meta(
         ident,
         into_property: parse_expr(&into_property_expr_string),
         from_property: parse_expr(&from_property_expr_string),
-        entity_getter: entity_getter,
+        entity_getter,
     }
 }
 
@@ -149,7 +150,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                             None => (),
                         }
                         let datastore_property_name =
-                            property_name.unwrap_or(struct_property_name.clone());
+                            property_name.unwrap_or_else(|| struct_property_name.clone());
 
                         field_metas.push(build_field_meta(
                             ident,

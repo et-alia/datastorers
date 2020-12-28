@@ -74,7 +74,7 @@ impl Deserialize for String {
         value
             .0
             .string_value
-            .ok_or_else(|| DatastoreDeserializeError::NoSuchValue)
+            .ok_or(DatastoreDeserializeError::NoSuchValue)
     }
 }
 
@@ -83,7 +83,7 @@ impl Deserialize for i64 {
         value
             .0
             .integer_value
-            .ok_or_else(|| DatastoreDeserializeError::NoSuchValue)
+            .ok_or(DatastoreDeserializeError::NoSuchValue)
     }
 }
 
@@ -92,7 +92,7 @@ impl Deserialize for f64 {
         value
             .0
             .double_value
-            .ok_or_else(|| DatastoreDeserializeError::NoSuchValue)
+            .ok_or(DatastoreDeserializeError::NoSuchValue)
     }
 }
 
@@ -101,7 +101,7 @@ impl Deserialize for bool {
         value
             .0
             .boolean_value
-            .ok_or_else(|| DatastoreDeserializeError::NoSuchValue)
+            .ok_or(DatastoreDeserializeError::NoSuchValue)
     }
 }
 
@@ -110,7 +110,7 @@ impl Deserialize for Bytes {
         let blob_b64 = value
             .0
             .blob_value
-            .ok_or_else(|| DatastoreDeserializeError::NoSuchValue)?;
+            .ok_or(DatastoreDeserializeError::NoSuchValue)?;
         let u8_vec = BASE64_CFG.decode(&blob_b64)?;
         Ok(Bytes(u8_vec))
     }
@@ -121,7 +121,7 @@ impl Deserialize for NaiveDateTime {
         let date_string = value
             .0
             .timestamp_value
-            .ok_or_else(|| DatastoreDeserializeError::NoSuchValue)?;
+            .ok_or(DatastoreDeserializeError::NoSuchValue)?;
         let date_time = DateTime::parse_from_rfc3339(&date_string)?;
         Ok(date_time.naive_utc())
     }
