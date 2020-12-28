@@ -4,15 +4,11 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{
-    Data, DeriveInput, Expr, GenericArgument, Ident, Lit, Meta, PathArguments, Type, TypePath,
-};
+use syn::{Data, DeriveInput, Expr, Ident, Lit, Meta, Type};
 
 struct EntityGetter {
     // Property name in the datastore entity
     datastore_property: Expr,
-    // Property type
-    property_type: Expr,
     get_one_method_name: Expr,
     get_method_name: Expr,
 }
@@ -30,73 +26,19 @@ struct FieldMeta {
     entity_getter: Option<EntityGetter>,
 }
 
-
-fn get_generic_argument(typepath: &TypePath) -> Option<&TypePath> {
-    let type_params = &typepath.path.segments.first().unwrap().arguments;
-    let generic_arg = match type_params {
-        PathArguments::AngleBracketed(params) => params.args.first().unwrap(),
-        _ => panic!("Expected a generic type argument"),
-    };
-    // This argument must be a type:
-    match generic_arg {
-        GenericArgument::Type(ty) => match ty {
-            Type::Path(p) => Some(p),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-fn build_proprty_expr(
-    datastore_property_name: &String,
-    struct_property_name: &String,
-    optional: bool,
-    property_operator_suffix: &String,
-) -> (String, String) {
-    if optional {
-        (
-            format!(
-                "properties.get_{}(\"{}\").map_or_else(optional_err, optional_ok)",
-                property_operator_suffix, datastore_property_name
-            ),
-            format!(
-                "if let Some(val) = entity.{} {{properties.set_{}(\"{}\", val);}}",
-                struct_property_name, property_operator_suffix, datastore_property_name
-            )
-        )
-    } else {
-        (
-            format!(
-                "properties.get_{}(\"{}\")",
-                property_operator_suffix, datastore_property_name
-            ),
-            format!(
-                "properties.set_{}(\"{}\", entity.{})",
-                property_operator_suffix, datastore_property_name, struct_property_name
-            )
-        )
-    }
-}
-
 fn build_field_meta(
     ident: Ident,
     datastore_property_name: &String,
     struct_property_name: &String,
-    optional: bool,
-    property_operator_suffix: &String,
     indexed: bool,
-    getter_value_type: &'static str,
 ) -> FieldMeta {
-    
-    let (into_property_expr_string, from_property_expr_string) = build_proprty_expr(
-        datastore_property_name,
-        struct_property_name,
-        optional,
-        property_operator_suffix,
+    let into_property_expr_string = format!("properties.get(\"{}\")", datastore_property_name);
+    let from_property_expr_string = format!(
+        "properties.set(\"{}\", entity.{})",
+        datastore_property_name, struct_property_name
     );
     let entity_getter = match indexed {
         true => Some(EntityGetter {
-            property_type: parse_expr(getter_value_type),
             get_one_method_name: parse_expr(&format!("get_one_by_{}", struct_property_name)),
             get_method_name: parse_expr(&format!("get_by_{}", struct_property_name)),
             datastore_property: parse_expr(&format!("\"{}\"", datastore_property_name)),
@@ -111,58 +53,10 @@ fn build_field_meta(
     }
 }
 
-fn recurse_property_path(
-    path: &TypePath
-) -> Option<(&'static str, &'static str, &'static str, bool)> {
-    recurse_property(
-        Some(path),
-        path.path.segments.first().unwrap().ident.to_string().as_str(),
-        "",
-        false
-    )
-}
-
-fn recurse_property(
-    path: Option<&TypePath>,
-    segment_str: &str,
-    getter_suffix: &'static str,
-    optional: bool
-) -> Option<(&'static str, &'static str, &'static str, bool)> {
-    match segment_str {
-        "String" => Some(("string", "String", getter_suffix, optional)),
-        "i64" => Some(("integer", "i64", getter_suffix, optional)),
-        "bool" => Some(("bool", "bool", getter_suffix, optional)),
-        "Vec" => recurse_generic(path, "_array", optional),
-        "Option" => recurse_generic(path, getter_suffix, true),
-        _ => None, // Ignore
-    }
-}
-
-fn recurse_generic(
-    path: Option<&TypePath>,
-    getter_suffix: &'static str,
-    optional: bool
-) -> Option<(&'static str, &'static str, &'static str, bool)> {
-    if let Some(p) = path {
-        if let Some(generic) = get_generic_argument(p) {
-            let generic_type = generic.path.segments.first().unwrap().ident.to_string();
-            recurse_property(
-                Some(generic),
-                &generic_type,
-                getter_suffix,
-                optional
-            )
-        } else {
-            // No valid generic type set, no need to continue iteration
-            None
-        }
-    } else {
-        // No path, no need to go deeper
-        None
-    }
-}
-
-#[proc_macro_derive(DatastoreManaged, attributes(kind, key, indexed, property, page_size, version))]
+#[proc_macro_derive(
+    DatastoreManaged,
+    attributes(kind, key, indexed, property, page_size, version)
+)]
 pub fn datastore_managed(input: TokenStream) -> TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
 
@@ -183,12 +77,12 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                                 if let Lit::Str(lit_str) = name_value.lit.clone() {
                                     kind = Some(lit_str.value());
                                 }
-                            },
+                            }
                             "page_size" => {
                                 if let Lit::Int(lit_int) = name_value.lit.clone() {
                                     page_size = parse_expr(&format!("Some({})", lit_int));
                                 }
-                            },
+                            }
                             _ => (),
                         }
                     }
@@ -207,14 +101,14 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                                 "key" => {
                                     key_field =
                                         Some(field.ident.as_ref().unwrap().clone().to_string());
-                                },
+                                }
                                 "version" => {
-                                  version_field =
+                                    version_field =
                                         Some(field.ident.as_ref().unwrap().clone().to_string());
-                                },
+                                }
                                 "indexed" => {
                                     indexed = true;
-                                },
+                                }
                                 _ => (),
                             }
                         }
@@ -233,27 +127,36 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                     }
                 }
                 match &field.ty {
-                    Type::Path(p) => {
+                    Type::Path(_) => {
                         let ident = field.ident.as_ref().unwrap().clone();
                         let struct_property_name = ident.to_string();
-                        if &struct_property_name == version_field.as_ref().unwrap_or(&String::from("")) {
-                            continue; // Ignore version field if set
+                        match &version_field {
+                            Some(version_field) => {
+                                // Ignore version field if set
+                                if version_field == &struct_property_name {
+                                    continue;
+                                }
+                            }
+                            None => (),
                         }
-                        let datastore_property_name = property_name.unwrap_or(struct_property_name.clone());
+                        match &key_field {
+                            Some(key_field) => {
+                                // Ignore key field if set
+                                if key_field == &struct_property_name {
+                                    continue;
+                                }
+                            }
+                            None => (),
+                        }
+                        let datastore_property_name =
+                            property_name.unwrap_or(struct_property_name.clone());
 
-                        if let Some(property_data) = recurse_property_path(&p) {
-                            let (property_operator_suffix, getter_value_type, operator_suffix, optional) = property_data;
-                           
-                            field_metas.push(build_field_meta(
-                                ident,
-                                &datastore_property_name,
-                                &struct_property_name,
-                                optional,
-                                &format!("{}{}", property_operator_suffix, operator_suffix),
-                                indexed,
-                                getter_value_type,
-                            ));
-                        }
+                        field_metas.push(build_field_meta(
+                            ident,
+                            &datastore_property_name,
+                            &struct_property_name,
+                            indexed,
+                        ));
                     }
                     _ => (), // Ignore
                 }
@@ -280,7 +183,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
     let key_field_str = key_field.unwrap();
     let self_key_field_expr = parse_expr(&format!("self.{}.as_ref()", key_field_str));
     let entity_key_field_expr = parse_expr(&format!("entity.{}", key_field_str));
-    
+
     let mut entity_version = parse_expr("None");
     let mut meta_field_assignements = vec![parse_expr(&format!("{}: key", &key_field_str))];
     if let Some(version) = version_field {
@@ -302,18 +205,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
     let entity_collection_getters = fields
         .iter()
         .filter(|f| f.entity_getter.is_some())
-        .map(|f| {
-            f.entity_getter
-                .as_ref()
-                .unwrap()
-                .get_method_name
-                .clone()
-        })
-        .collect::<Vec<_>>();
-    let entity_getter_key_types = fields
-        .iter()
-        .filter(|f| f.entity_getter.is_some())
-        .map(|f| f.entity_getter.as_ref().unwrap().property_type.clone())
+        .map(|f| f.entity_getter.as_ref().unwrap().get_method_name.clone())
         .collect::<Vec<_>>();
     let ds_property_names = fields
         .iter()
@@ -339,7 +231,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 return Ok(result)
             }
             #(
-                pub async fn #entity_getters(value: #entity_getter_key_types, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
+                pub async fn #entity_getters(value: impl datastore_entity::serialize::Serialize, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
                 {
                     let datastore_entity = datastore_entity::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection).await?;
                     let result: #name = datastore_entity
@@ -349,7 +241,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             )*
 
             #(
-                pub async fn #entity_collection_getters(value: #entity_getter_key_types, connection: &impl datastore_entity::DatastoreConnection) -> Result<datastore_entity::ResultCollection<#name>, datastore_entity::DatastorersError>
+                pub async fn #entity_collection_getters(value: impl datastore_entity::serialize::Serialize, connection: &impl datastore_entity::DatastoreConnection) -> Result<datastore_entity::ResultCollection<#name>, datastore_entity::DatastorersError>
                 {
                     let entities = datastore_entity::get_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), #page_size, connection).await?;
                     let result: datastore_entity::ResultCollection<#name> = entities
@@ -361,7 +253,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             pub async fn commit(self, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
             {
                 let result_entity = datastore_entity::commit_one(
-                    self.into(),
+                    self.try_into()?,
                     connection
                 ).await?;
                 let result: #name = result_entity
@@ -371,12 +263,12 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
 
             pub async fn delete(self, connection: &impl datastore_entity::DatastoreConnection) -> Result<(), datastore_entity::DatastorersError>
             {
-                datastore_entity::delete_one(self.into(), connection).await
+                datastore_entity::delete_one(self.try_into()?, connection).await
             }
         }
 
         impl core::convert::TryFrom<datastore_entity::DatastoreEntity> for #name {
-            type Error = datastore_entity::DatastoreParseError;
+            type Error = datastore_entity::DatastorersError;
 
             fn try_from(mut entity: datastore_entity::DatastoreEntity) -> Result<Self, Self::Error> {
                 let key = entity.key();
@@ -406,11 +298,13 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             }
         }
 
-        impl core::convert::From<#name> for datastore_entity::DatastoreEntity {
-            fn from(entity: #name) -> Self {
+        impl core::convert::TryFrom<#name> for datastore_entity::DatastoreEntity {
+            type Error = datastore_entity::DatastorersError;
+
+            fn try_from(entity: #name) -> Result<Self, Self::Error> {
                 let mut properties = datastore_entity::DatastoreProperties::new();
                 #(
-                    #from_properties;
+                    #from_properties?;
                 )*
 
                 fn generate_empty_key() -> std::option::Option<google_datastore1::schemas::Key> {
@@ -424,13 +318,15 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                     })
                 }
 
-                datastore_entity::DatastoreEntity::from(
-                    #entity_key_field_expr.or_else(generate_empty_key),
-                    properties,
-                    #entity_version,
+                Ok(
+                    datastore_entity::DatastoreEntity::from(
+                        #entity_key_field_expr.or_else(generate_empty_key),
+                        properties,
+                        #entity_version,
+                    )
                 )
             }
-        }        
+        }
     };
 
     TokenStream::from(tokens)

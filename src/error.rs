@@ -1,3 +1,5 @@
+use crate::deserialize::DatastoreDeserializeError;
+use crate::serialize::DatastoreSerializeError;
 use thiserror::Error;
 
 //
@@ -45,4 +47,8 @@ pub enum DatastorersError {
     DatastoreError(#[from] google_datastore1::Error),
     #[error(transparent)]
     DatastoreClientError(#[from] DatastoreClientError),
+    #[error(transparent)]
+    DatastoreSerializeError(#[from] DatastoreSerializeError),
+    #[error(transparent)]
+    DatastoreDeserializeError(#[from] DatastoreDeserializeError),
 }

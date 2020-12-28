@@ -443,12 +443,11 @@ async fn test_delete() -> Result<(), DatastorersError> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_optional_values() -> Result<(), DatastorersError> {
     let connection = create_test_connection().await;
-
-    let mut inserted_empty = TestEntityOptional::default().commit(&connection).await?;
+    let def = TestEntityOptional::default();
+    let mut inserted_empty = def.commit(&connection).await?;
     let inserted_id = inserted_empty.clone().key.unwrap().path.unwrap()[0]
         .id
         .unwrap();
-
     // Set string and bool value and commit
     let string_value = generate_random_string(10);
     inserted_empty.prop_string = Some(string_value.clone());
@@ -467,7 +466,6 @@ async fn test_optional_values() -> Result<(), DatastorersError> {
         TestEntity::get_one_by_id(inserted_id, &connection).await,
         DatastoreParseError::NoSuchValue,
     );
-
     // Set the rest of the values
     let int_value = generate_random_int();
     fetched_entity.prop_int = Some(int_value);

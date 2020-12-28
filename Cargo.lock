@@ -155,10 +155,12 @@ name = "datastore_entity"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "chrono",
  "datastore_entity_derives",
  "gcp_auth",
  "google-datastore1",
  "google_api_auth",
+ "radix64",
  "rand 0.7.3",
  "thiserror",
  "tokio",

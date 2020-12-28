@@ -1,7 +1,11 @@
+pub mod bytes;
 pub mod connection;
+pub mod deserialize;
 mod entity;
 pub mod error;
+pub mod serialize;
 pub mod transaction;
+
 pub use crate::connection::DatastoreConnection;
 pub use crate::entity::{
     DatastoreEntity, DatastoreEntityCollection, DatastoreProperties, DatastoreValue,
@@ -15,9 +19,10 @@ use google_datastore1::schemas::{
     BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
     Filter, Key, KindExpression, LookupRequest, LookupResponse, Mutation, MutationResult,
     PathElement, PropertyFilter, PropertyFilterOp, PropertyReference, Query,
-    QueryResultBatchMoreResults, ReadOptions, RunQueryRequest, RunQueryResponse, Value,
+    QueryResultBatchMoreResults, ReadOptions, RunQueryRequest, RunQueryResponse,
 };
 
+use crate::serialize::Serialize;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 
@@ -65,23 +70,18 @@ pub async fn get_one_by_id(
     }
 }
 
-fn get_datastore_value_for_value<K: Into<DatastoreValue>>(value: K) -> Value {
-    let datastore_value: DatastoreValue = value.into();
-    datastore_value.into()
-}
-
 fn build_query_from_property(
     property_name: String,
-    property_value: impl Into<DatastoreValue>,
+    property_value: impl Serialize,
     kind: String,
     limit: i32,
-) -> Query {
+) -> Result<Query, DatastorersError> {
     let mut filter = Filter::default();
     filter.property_filter = Some(PropertyFilter {
         property: Some(PropertyReference {
             name: Some(property_name),
         }),
-        value: Some(get_datastore_value_for_value(property_value)),
+        value: property_value.serialize()?.map(|v| v.0),
         op: Some(PropertyFilterOp::Equal),
     });
     let mut query = Query::default();
@@ -89,12 +89,12 @@ fn build_query_from_property(
     query.filter = Some(filter);
     query.limit = Some(limit);
 
-    return query;
+    return Ok(query);
 }
 
 pub async fn get_one_by_property(
     property_name: String,
-    property_value: impl Into<DatastoreValue>,
+    property_value: impl Serialize,
     kind: String,
     connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntity, DatastorersError> {
@@ -106,7 +106,7 @@ pub async fn get_one_by_property(
         property_value,
         kind,
         1,
-    ));
+    )?);
     req.read_options = Some(ReadOptions {
         transaction: connection.get_transaction_id(),
         read_consistency: None,
@@ -189,7 +189,7 @@ async fn get_page(
 
 pub async fn get_by_property(
     property_name: String,
-    property_value: impl Into<DatastoreValue>,
+    property_value: impl Serialize,
     kind: String,
     limit: Option<i32>,
     connection: &impl DatastoreConnection,
@@ -199,13 +199,13 @@ pub async fn get_by_property(
         property_value,
         kind,
         limit.unwrap_or(DEFAULT_PAGE_SIZE),
-    );
+    )?;
     get_page(query, connection).await
 }
 
 impl<T> ResultCollection<T>
 where
-    T: TryFrom<DatastoreEntity, Error = DatastoreParseError>,
+    T: TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
     pub async fn get_next_page(
         self,
