@@ -224,17 +224,17 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #self_key_field_expr
             }
 
-            pub async fn get_one_by_id(id: i64, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
+            pub async fn get_one_by_id(id: i64, connection: &impl datastorers::DatastoreConnection) -> Result<#name, datastorers::DatastorersError>
             {
-                let datastore_entity = datastore_entity::get_one_by_id(id, #kind_str.to_string(), connection).await?;
+                let datastore_entity = datastorers::get_one_by_id(id, #kind_str.to_string(), connection).await?;
                 let result: #name = datastore_entity
                     .try_into()?;
                 return Ok(result)
             }
             #(
-                pub async fn #entity_getters(value: impl datastore_entity::serialize::Serialize, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
+                pub async fn #entity_getters(value: impl datastorers::serialize::Serialize, connection: &impl datastorers::DatastoreConnection) -> Result<#name, datastorers::DatastorersError>
                 {
-                    let datastore_entity = datastore_entity::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection).await?;
+                    let datastore_entity = datastorers::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection).await?;
                     let result: #name = datastore_entity
                         .try_into()?;
                     return Ok(result)
@@ -242,18 +242,18 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             )*
 
             #(
-                pub async fn #entity_collection_getters(value: impl datastore_entity::serialize::Serialize, connection: &impl datastore_entity::DatastoreConnection) -> Result<datastore_entity::ResultCollection<#name>, datastore_entity::DatastorersError>
+                pub async fn #entity_collection_getters(value: impl datastorers::serialize::Serialize, connection: &impl datastorers::DatastoreConnection) -> Result<datastorers::ResultCollection<#name>, datastorers::DatastorersError>
                 {
-                    let entities = datastore_entity::get_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), #page_size, connection).await?;
-                    let result: datastore_entity::ResultCollection<#name> = entities
+                    let entities = datastorers::get_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), #page_size, connection).await?;
+                    let result: datastorers::ResultCollection<#name> = entities
                         .try_into()?;
                     return Ok(result)
                 }
             )*
 
-            pub async fn commit(self, connection: &impl datastore_entity::DatastoreConnection) -> Result<#name, datastore_entity::DatastorersError>
+            pub async fn commit(self, connection: &impl datastorers::DatastoreConnection) -> Result<#name, datastorers::DatastorersError>
             {
-                let result_entity = datastore_entity::commit_one(
+                let result_entity = datastorers::commit_one(
                     self.try_into()?,
                     connection
                 ).await?;
@@ -262,24 +262,24 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 return Ok(result)
             }
 
-            pub async fn delete(self, connection: &impl datastore_entity::DatastoreConnection) -> Result<(), datastore_entity::DatastorersError>
+            pub async fn delete(self, connection: &impl datastorers::DatastoreConnection) -> Result<(), datastorers::DatastorersError>
             {
-                datastore_entity::delete_one(self.try_into()?, connection).await
+                datastorers::delete_one(self.try_into()?, connection).await
             }
         }
 
-        impl core::convert::TryFrom<datastore_entity::DatastoreEntity> for #name {
-            type Error = datastore_entity::DatastorersError;
+        impl core::convert::TryFrom<datastorers::DatastoreEntity> for #name {
+            type Error = datastorers::DatastorersError;
 
-            fn try_from(mut entity: datastore_entity::DatastoreEntity) -> Result<Self, Self::Error> {
+            fn try_from(mut entity: datastorers::DatastoreEntity) -> Result<Self, Self::Error> {
                 let key = entity.key();
                 let version = entity.version();
-                let mut properties = datastore_entity::DatastoreProperties::try_from(entity)?;
-                fn optional_ok<T>(val: T) -> Result<Option<T>, datastore_entity::DatastoreParseError> {
+                let mut properties = datastorers::DatastoreProperties::try_from(entity)?;
+                fn optional_ok<T>(val: T) -> Result<Option<T>, datastorers::DatastoreParseError> {
                     Ok(Some(val))
                 }
-                fn optional_err<T>(err: datastore_entity::DatastoreParseError) -> Result<Option<T>, datastore_entity::DatastoreParseError> {
-                    if err == datastore_entity::DatastoreParseError::NoSuchValue {
+                fn optional_err<T>(err: datastorers::DatastoreParseError) -> Result<Option<T>, datastorers::DatastoreParseError> {
+                    if err == datastorers::DatastoreParseError::NoSuchValue {
                         // Vale not set => the optional representation is None
                         Ok(None)
                     } else {
@@ -299,11 +299,11 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             }
         }
 
-        impl core::convert::TryFrom<#name> for datastore_entity::DatastoreEntity {
-            type Error = datastore_entity::DatastorersError;
+        impl core::convert::TryFrom<#name> for datastorers::DatastoreEntity {
+            type Error = datastorers::DatastorersError;
 
             fn try_from(entity: #name) -> Result<Self, Self::Error> {
-                let mut properties = datastore_entity::DatastoreProperties::new();
+                let mut properties = datastorers::DatastoreProperties::new();
                 #(
                     #from_properties?;
                 )*
@@ -320,7 +320,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 }
 
                 Ok(
-                    datastore_entity::DatastoreEntity::from(
+                    datastorers::DatastoreEntity::from(
                         #entity_key_field_expr.or_else(generate_empty_key),
                         properties,
                         #entity_version,

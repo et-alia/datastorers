@@ -1,7 +1,7 @@
 use chrono::{NaiveDateTime, Utc};
-use datastore_entity::deserialize::Deserialize;
-use datastore_entity::serialize::Serialize;
-use datastore_entity::{DatastoreEntity, DatastoreManaged, DatastoreValue, DatastorersError};
+use datastorers::deserialize::Deserialize;
+use datastorers::serialize::Serialize;
+use datastorers::{DatastoreEntity, DatastoreManaged, DatastoreValue, DatastorersError};
 use float_cmp::approx_eq;
 use google_datastore1::schemas::Key;
 use std::convert::TryInto;

@@ -151,7 +151,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "datastore_entity"
+name = "datastore_entity_derives"
+version = "0.0.1"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "datastorers"
 version = "0.0.1"
 dependencies = [
  "async-trait",
@@ -165,14 +173,6 @@ dependencies = [
  "rand 0.7.3",
  "thiserror",
  "tokio",
-]
-
-[[package]]
-name = "datastore_entity_derives"
-version = "0.0.1"
-dependencies = [
- "quote",
- "syn",
 ]
 
 [[package]]

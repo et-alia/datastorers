@@ -1,9 +1,7 @@
 mod connection;
 use crate::connection::create_test_connection;
-use datastore_entity::transaction::TransactionConnection;
-use datastore_entity::{
-    DatastoreClientError, DatastoreManaged, DatastoreParseError, DatastorersError,
-};
+use datastorers::transaction::TransactionConnection;
+use datastorers::{DatastoreClientError, DatastoreManaged, DatastoreParseError, DatastorersError};
 use google_datastore1::schemas::Key;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
