@@ -157,7 +157,7 @@ async fn test_get_by_id() -> Result<(), DatastorersError> {
     // Insert an entity with some random values
     let entity = generate_random_entity();
     let original_string = entity.prop_string.clone();
-    let original_int = entity.prop_int.clone();
+    let original_int = entity.prop_int;
 
     let inserted = entity.commit(&connection).await?;
 
@@ -270,7 +270,9 @@ async fn test_get_collection_by_property() -> Result<(), DatastorersError> {
     );
 
     // Compare the two int arrays to validate that all inserted items have been fetched
-    assert_eq!(fetched_int_props.sort(), int_props.sort());
+    fetched_int_props.sort_unstable(); // Sort in place
+    int_props.sort_unstable(); // Sort in place
+    assert_eq!(fetched_int_props, int_props);
 
     Ok(())
 }
@@ -443,12 +445,11 @@ async fn test_delete() -> Result<(), DatastorersError> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_optional_values() -> Result<(), DatastorersError> {
     let connection = create_test_connection().await;
-
-    let mut inserted_empty = TestEntityOptional::default().commit(&connection).await?;
+    let def = TestEntityOptional::default();
+    let mut inserted_empty = def.commit(&connection).await?;
     let inserted_id = inserted_empty.clone().key.unwrap().path.unwrap()[0]
         .id
         .unwrap();
-
     // Set string and bool value and commit
     let string_value = generate_random_string(10);
     inserted_empty.prop_string = Some(string_value.clone());
@@ -467,7 +468,6 @@ async fn test_optional_values() -> Result<(), DatastorersError> {
         TestEntity::get_one_by_id(inserted_id, &connection).await,
         DatastoreParseError::NoSuchValue,
     );
-
     // Set the rest of the values
     let int_value = generate_random_int();
     fetched_entity.prop_int = Some(int_value);

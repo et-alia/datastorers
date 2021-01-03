@@ -1,21 +1,24 @@
 use crate::error::DatastoreParseError;
 
-use google_datastore1::schemas::{ArrayValue, Entity, EntityResult, Key, Query, Value};
+use google_datastore1::schemas::{Entity, EntityResult, Key, Query, Value};
 
+use crate::deserialize::Deserialize;
+use crate::serialize::Serialize;
+use crate::DatastorersError;
 use std::collections::BTreeMap;
 use std::convert::From;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fmt::{Display, Formatter};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 //
 // DatastoreValue
 //
 pub struct DatastoreValue(pub Value);
 
-impl Default for DatastoreValue {
-    fn default() -> Self {
+impl DatastoreValue {
+    pub fn empty() -> Self {
         DatastoreValue(Value {
             array_value: None,
             blob_value: None,
@@ -34,24 +37,6 @@ impl Default for DatastoreValue {
     }
 }
 
-impl DatastoreValue {
-    pub fn string(&mut self, s: String) {
-        self.0.string_value = Some(s);
-    }
-
-    pub fn integer(&mut self, i: i64) {
-        self.0.integer_value = Some(i);
-    }
-
-    pub fn boolean(&mut self, b: bool) {
-        self.0.boolean_value = Some(b);
-    }
-
-    pub fn array(&mut self, a: Vec<Value>) {
-        self.0.array_value = Some(ArrayValue { values: Some(a) });
-    }
-}
-
 impl Deref for DatastoreValue {
     type Target = Value;
 
@@ -60,75 +45,15 @@ impl Deref for DatastoreValue {
     }
 }
 
+impl DerefMut for DatastoreValue {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl From<DatastoreValue> for Value {
     fn from(val: DatastoreValue) -> Value {
         val.0
-    }
-}
-
-impl From<String> for DatastoreValue {
-    fn from(string_value: String) -> DatastoreValue {
-        let mut val = DatastoreValue::default();
-        val.string(string_value);
-        return val;
-    }
-}
-
-impl From<bool> for DatastoreValue {
-    fn from(bool_value: bool) -> DatastoreValue {
-        let mut val = DatastoreValue::default();
-        val.boolean(bool_value);
-        return val;
-    }
-}
-
-impl From<i64> for DatastoreValue {
-    fn from(int_value: i64) -> DatastoreValue {
-        let mut val = DatastoreValue::default();
-        val.integer(int_value);
-        return val;
-    }
-}
-
-fn generate_array_value<T, F>(array: Vec<T>, value_generator: F) -> DatastoreValue
-where
-    F: Fn(T) -> Value,
-{
-    let mut result = DatastoreValue::default();
-    result.array(array.into_iter().map(value_generator).collect());
-    return result;
-}
-
-impl From<Vec<String>> for DatastoreValue {
-    fn from(array: Vec<String>) -> DatastoreValue {
-        fn generate_string_value(str_val: String) -> Value {
-            let mut val = DatastoreValue::default();
-            val.string(str_val);
-            val.0
-        }
-        generate_array_value(array, generate_string_value)
-    }
-}
-
-impl From<Vec<i64>> for DatastoreValue {
-    fn from(array: Vec<i64>) -> DatastoreValue {
-        fn generate_int_value(int_val: i64) -> Value {
-            let mut val = DatastoreValue::default();
-            val.integer(int_val);
-            val.0
-        }
-        generate_array_value(array, generate_int_value)
-    }
-}
-
-impl From<Vec<bool>> for DatastoreValue {
-    fn from(array: Vec<bool>) -> DatastoreValue {
-        fn generate_bool_value(bool_val: bool) -> Value {
-            let mut val = DatastoreValue::default();
-            val.boolean(bool_val);
-            val.0
-        }
-        generate_array_value(array, generate_bool_value)
     }
 }
 
@@ -145,6 +70,7 @@ impl Display for DatastoreProperties {
 }
 
 impl DatastoreProperties {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> DatastoreProperties {
         DatastoreProperties(BTreeMap::<String, Value>::new())
     }
@@ -154,110 +80,36 @@ impl DatastoreProperties {
     }
 
     pub fn into_map(self) -> BTreeMap<String, Value> {
-        return self.0;
+        self.0
     }
 
-    pub fn get_string(&mut self, key: &str) -> Result<String, DatastoreParseError> {
+    pub fn get<T: Deserialize>(&mut self, key: &str) -> Result<T, DatastorersError> {
         match self.0.remove(key) {
-            Some(value) => value
-                .string_value
-                .ok_or_else(|| DatastoreParseError::NoSuchValue),
-            None => Err(DatastoreParseError::NoSuchValue),
-        }
-    }
-
-    pub fn set_string(&mut self, key: &str, value: String) {
-        let mut datastore_value = DatastoreValue::default();
-        datastore_value.string(value);
-        self.0.insert(key.to_string(), datastore_value.0);
-    }
-
-    pub fn get_integer(&mut self, key: &str) -> Result<i64, DatastoreParseError> {
-        match self.0.remove(key) {
-            Some(value) => value
-                .integer_value
-                .ok_or_else(|| DatastoreParseError::NoSuchValue),
-            None => Err(DatastoreParseError::NoSuchValue),
-        }
-    }
-
-    pub fn set_integer(&mut self, key: &str, value: i64) {
-        let mut datastore_value = DatastoreValue::default();
-        datastore_value.integer(value);
-        self.0.insert(key.to_string(), datastore_value.0);
-    }
-
-    pub fn get_bool(&mut self, key: &str) -> Result<bool, DatastoreParseError> {
-        match self.0.remove(key) {
-            Some(value) => value
-                .boolean_value
-                .ok_or_else(|| DatastoreParseError::NoSuchValue),
-            None => Err(DatastoreParseError::NoSuchValue),
-        }
-    }
-
-    pub fn set_bool(&mut self, key: &str, value: bool) {
-        let mut datastore_value = DatastoreValue::default();
-        datastore_value.boolean(value);
-        self.0.insert(key.to_string(), datastore_value.0);
-    }
-
-    pub fn get_string_array(&mut self, key: &str) -> Result<Vec<String>, DatastoreParseError> {
-        self.get_array(key, |v| v.string_value)
-    }
-
-    pub fn set_string_array(&mut self, key: &str, value: Vec<String>) {
-        let datastore_value: DatastoreValue = value.into();
-        self.0.insert(key.to_string(), datastore_value.0);
-    }
-
-    pub fn get_integer_array(&mut self, key: &str) -> Result<Vec<i64>, DatastoreParseError> {
-        self.get_array(key, |v| v.integer_value)
-    }
-
-    pub fn set_integer_array(&mut self, key: &str, value: Vec<i64>) {
-        let datastore_value: DatastoreValue = value.into();
-        self.0.insert(key.to_string(), datastore_value.0);
-    }
-
-    pub fn get_bool_array(&mut self, key: &str) -> Result<Vec<bool>, DatastoreParseError> {
-        self.get_array(key, |v| v.boolean_value)
-    }
-
-    pub fn set_bool_array(&mut self, key: &str, value: Vec<bool>) {
-        let datastore_value: DatastoreValue = value.into();
-        self.0.insert(key.to_string(), datastore_value.0);
-    }
-
-    fn get_array<T, F>(&mut self, key: &str, extractor: F) -> Result<Vec<T>, DatastoreParseError>
-    where
-        F: Fn(Value) -> Option<T>,
-    {
-        match self.0.remove(key) {
-            Some(value) => match value.array_value {
-                Some(array_value) => match array_value.values {
-                    Some(values) => values
-                        .into_iter()
-                        .map(|v| {
-                            extractor(v).ok_or_else(|| DatastoreParseError::InvalidArrayValueFormat)
-                        })
-                        .collect(),
-                    None => Ok(vec![]), // Empty array
-                },
-                None => Err(DatastoreParseError::NoSuchValue),
+            Some(value) => T::deserialize(DatastoreValue(value)).map_err(|e| e.into()),
+            None => match T::default_missing() {
+                Some(def) => Ok(def),
+                None => Err(DatastoreParseError::NoSuchValue.into()),
             },
-            None => Err(DatastoreParseError::NoSuchValue),
         }
+    }
+
+    pub fn set<T: Serialize>(&mut self, key: &str, value: T) -> Result<(), DatastorersError> {
+        if let Some(value) = value.serialize()? {
+            self.0.insert(key.to_string(), value.0);
+        }
+        Ok(())
     }
 }
 
 impl TryFrom<DatastoreEntity> for DatastoreProperties {
-    type Error = DatastoreParseError;
+    type Error = DatastorersError;
 
     fn try_from(entity: DatastoreEntity) -> Result<Self, Self::Error> {
         match entity.0.properties {
             Some(properties) => Ok(DatastoreProperties(properties)),
-            None => Err(DatastoreParseError::NoProperties),
+            None => Err(DatastorersError::ParseError(
+                DatastoreParseError::NoProperties,
+            )),
         }
     }
 }
@@ -318,40 +170,44 @@ impl Display for DatastoreEntity {
 }
 
 impl TryFrom<EntityResult> for DatastoreEntity {
-    type Error = DatastoreParseError;
+    type Error = DatastorersError;
 
     fn try_from(entity_result: EntityResult) -> Result<Self, Self::Error> {
         let version = entity_result.version;
         if let Some(entity) = entity_result.entity {
-            let entity_properties = entity.properties.ok_or(DatastoreParseError::NoProperties)?;
+            let entity_properties = entity.properties.ok_or(DatastorersError::ParseError(
+                DatastoreParseError::NoProperties,
+            ))?;
             let props = DatastoreProperties::from_map(entity_properties);
 
             Ok(DatastoreEntity::from(entity.key, props, version))
         } else {
-            Err(DatastoreParseError::NoResult)?
+            Err(DatastoreParseError::NoResult.into())
         }
     }
 }
 
 impl TryFrom<Entity> for DatastoreEntity {
-    type Error = DatastoreParseError;
+    type Error = DatastorersError;
 
     fn try_from(entity: Entity) -> Result<Self, Self::Error> {
-        let entity_properties = entity.properties.ok_or(DatastoreParseError::NoProperties)?;
+        let entity_properties = entity.properties.ok_or(DatastorersError::ParseError(
+            DatastoreParseError::NoProperties,
+        ))?;
         let props = DatastoreProperties::from_map(entity_properties);
         Ok(DatastoreEntity::from(entity.key, props, None))
     }
 }
 
 impl TryFrom<DatastoreEntity> for Entity {
-    type Error = DatastoreParseError;
+    type Error = DatastorersError;
 
     fn try_from(entity: DatastoreEntity) -> Result<Self, Self::Error> {
         let key = entity.key();
         let properties: DatastoreProperties = entity.try_into()?;
 
         Ok(Entity {
-            key: key,
+            key,
             properties: Some(properties.into_map()),
         })
     }
@@ -404,16 +260,16 @@ pub struct ResultCollection<T> {
 
 impl<T> TryFrom<DatastoreEntityCollection> for ResultCollection<T>
 where
-    T: TryFrom<DatastoreEntity, Error = DatastoreParseError>,
+    T: TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
-    type Error = DatastoreParseError;
+    type Error = DatastorersError;
 
     fn try_from(collection: DatastoreEntityCollection) -> Result<Self, Self::Error> {
         let result_items: Vec<T> = collection
             .entities
             .into_iter()
             .map(T::try_from)
-            .collect::<Result<Vec<T>, DatastoreParseError>>()?;
+            .collect::<Result<Vec<T>, DatastorersError>>()?;
         Ok(ResultCollection {
             result: result_items,
             query: collection.query,

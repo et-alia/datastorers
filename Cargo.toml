@@ -9,12 +9,15 @@ thiserror = "1.0.22"
 google-datastore1 = { git = "https://github.com/bes/google-datastore1-generated", branch = "async" }
 datastore_entity_derives = { path = "./datastore_entity_derives" }
 async-trait = "0.1"
+chrono = "0.4"
+radix64 = "0.6.2"
 
 [dev-dependencies]
 google_api_auth = { git = "https://github.com/bes/generator", branch = "refactor/async" }
 gcp_auth = "0.3.2"
 tokio = { version = "0.2.21", features = ["full"] }
 rand = "0.7.3"
+float-cmp = "0.8.0"
 
 [features]
 # no features by default

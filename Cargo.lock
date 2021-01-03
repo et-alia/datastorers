@@ -155,10 +155,13 @@ name = "datastore_entity"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "chrono",
  "datastore_entity_derives",
+ "float-cmp",
  "gcp_auth",
  "google-datastore1",
  "google_api_auth",
+ "radix64",
  "rand 0.7.3",
  "thiserror",
  "tokio",
@@ -200,6 +203,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "801bbab217d7f79c0062f4f7205b5d4427c6d1a7bd7aafdd1475f7c59d62b283"
 dependencies = [
  "cfg-if 1.0.0",
+]
+
+[[package]]
+name = "float-cmp"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1267f4ac4f343772758f7b1bdcbe767c218bbab93bb432acbf5162bbf85a6c4"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]
