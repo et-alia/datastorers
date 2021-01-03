@@ -1,10 +1,24 @@
-use datastore_entity::{DatastoreEntity, DatastoreManaged, DatastorersError};
+use chrono::{NaiveDateTime, Utc};
+use datastore_entity::deserialize::Deserialize;
+use datastore_entity::serialize::Serialize;
+use datastore_entity::{DatastoreEntity, DatastoreManaged, DatastoreValue, DatastorersError};
+use float_cmp::approx_eq;
 use google_datastore1::schemas::Key;
 use std::convert::TryInto;
-use chrono::{NaiveDateTime, Utc};
-use datastore_entity::serialize::Serialize;
-use datastore_entity::deserialize::Deserialize;
+use std::error::Error;
 
+#[derive(Debug)]
+pub enum TestError {
+    Unknown,
+}
+
+impl Error for TestError {}
+
+impl std::fmt::Display for TestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Unknown test error")
+    }
+}
 
 #[derive(DatastoreManaged, Clone, Debug)]
 #[kind = "thingy"]
@@ -49,11 +63,11 @@ fn test_version() -> Result<(), DatastorersError> {
     };
 
     // From VersionedThing to DatastoreEntity, version shall be included in entity
-    let entity: DatastoreEntity = versioned_thing.clone().try_into()?;
+    let entity: DatastoreEntity = versioned_thing.try_into()?;
     assert_eq!(Some(test_version), entity.version());
 
     // And back again
-    let thing_is_back: VersionedThing = entity.clone().try_into().unwrap();
+    let thing_is_back: VersionedThing = entity.try_into().unwrap();
     assert_eq!(Some(test_version), thing_is_back.thing_version);
     assert_eq!("StrStr", thing_is_back.prop_string);
     Ok(())
@@ -77,14 +91,18 @@ fn into_datastore_entity_and_back() -> Result<(), DatastorersError> {
 
     let entity: DatastoreEntity = thing.clone().try_into()?;
 
-    let thing_is_back: Thing = entity.clone().try_into().unwrap();
+    let thing_is_back: Thing = entity.try_into().unwrap();
 
     assert_eq!(thing.prop_string, thing_is_back.prop_string);
     assert_eq!("StrStr", thing_is_back.prop_string);
     assert_eq!(thing.prop_integer, thing_is_back.prop_integer);
     assert_eq!(777, thing_is_back.prop_integer);
-    assert_eq!(thing.prop_double, thing_is_back.prop_double);
-    assert_eq!(987.12, thing_is_back.prop_double);
+    assert!(approx_eq!(
+        f64,
+        thing.prop_double,
+        thing_is_back.prop_double
+    ));
+    assert!(approx_eq!(f64, 987.12, thing_is_back.prop_double));
     assert_eq!(thing.prop_boolean, thing_is_back.prop_boolean);
     assert_eq!(false, thing_is_back.prop_boolean);
     assert_eq!(
@@ -94,4 +112,37 @@ fn into_datastore_entity_and_back() -> Result<(), DatastorersError> {
     assert_eq!(thing.prop_date, thing_is_back.prop_date);
     assert_eq!(now, thing_is_back.prop_date);
     Ok(())
+}
+
+#[test]
+fn timestap_deserialize_serialize() -> Result<(), Box<dyn Error>> {
+    let date_str = "2021-01-02T12:53:39.392Z";
+    let mut value_to_deserialize = DatastoreValue::empty();
+    value_to_deserialize.timestamp_value = Some(date_str.to_string());
+    let date_time = NaiveDateTime::deserialize(value_to_deserialize)?;
+    let serialized = date_time.serialize()?;
+    let serialized_value: String =
+        get_datastore_value(&serialized, |d| d.0.timestamp_value.as_ref())?;
+    assert_eq!(date_str, serialized_value);
+    Ok(())
+}
+
+fn get_datastore_value<T, F>(
+    datastore_value: &Option<DatastoreValue>,
+    select_prop: F,
+) -> Result<T, Box<dyn Error>>
+where
+    T: Clone,
+    F: for<'a> Fn(&'a DatastoreValue) -> Option<&'a T>,
+{
+    match datastore_value {
+        None => Err(Box::new(TestError::Unknown)),
+        Some(serialized_value) => {
+            let selected_prop = select_prop(&serialized_value);
+            match selected_prop {
+                None => Err(Box::new(TestError::Unknown)),
+                Some(serialized_value_2) => Ok(serialized_value_2.clone()),
+            }
+        }
+    }
 }

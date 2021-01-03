@@ -1,3 +1,5 @@
+#![allow(clippy::single_match)]
+
 pub mod bytes;
 pub mod connection;
 pub mod deserialize;
@@ -58,15 +60,15 @@ pub async fn get_one_by_id(
 
     match resp.found {
         Some(mut found) => match found.len() {
-            0 => Err(DatastoreClientError::NotFound)?,
+            0 => Err(DatastoreClientError::NotFound.into()),
             1 => {
                 let res = found.remove(0);
                 let result: DatastoreEntity = res.try_into()?;
                 Ok(result)
             }
-            _ => Err(DatastoreClientError::AmbiguousResult)?,
+            _ => Err(DatastoreClientError::AmbiguousResult.into()),
         },
-        None => Err(DatastoreClientError::NotFound)?,
+        None => Err(DatastoreClientError::NotFound.into()),
     }
 }
 
@@ -76,20 +78,24 @@ fn build_query_from_property(
     kind: String,
     limit: i32,
 ) -> Result<Query, DatastorersError> {
-    let mut filter = Filter::default();
-    filter.property_filter = Some(PropertyFilter {
-        property: Some(PropertyReference {
-            name: Some(property_name),
+    let filter = Filter {
+        property_filter: Some(PropertyFilter {
+            property: Some(PropertyReference {
+                name: Some(property_name),
+            }),
+            value: property_value.serialize()?.map(|v| v.0),
+            op: Some(PropertyFilterOp::Equal),
         }),
-        value: property_value.serialize()?.map(|v| v.0),
-        op: Some(PropertyFilterOp::Equal),
-    });
-    let mut query = Query::default();
-    query.kind = Some(vec![KindExpression { name: Some(kind) }]);
-    query.filter = Some(filter);
-    query.limit = Some(limit);
+        ..Default::default()
+    };
+    let query = Query {
+        kind: Some(vec![KindExpression { name: Some(kind) }]),
+        filter: Some(filter),
+        limit: Some(limit),
+        ..Default::default()
+    };
 
-    return Ok(query);
+    Ok(query)
 }
 
 pub async fn get_one_by_property(
@@ -100,17 +106,19 @@ pub async fn get_one_by_property(
 ) -> Result<DatastoreEntity, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
-    let mut req = RunQueryRequest::default();
-    req.query = Some(build_query_from_property(
-        property_name,
-        property_value,
-        kind,
-        1,
-    )?);
-    req.read_options = Some(ReadOptions {
-        transaction: connection.get_transaction_id(),
-        read_consistency: None,
-    });
+    let req = RunQueryRequest {
+        query: Some(build_query_from_property(
+            property_name,
+            property_value,
+            kind,
+            1,
+        )?),
+        read_options: Some(ReadOptions {
+            transaction: connection.get_transaction_id(),
+            read_consistency: None,
+        }),
+        ..Default::default()
+    };
 
     let resp: RunQueryResponse = projects
         .run_query(req, connection.get_project_name())
@@ -123,23 +131,23 @@ pub async fn get_one_by_property(
                 .more_results
                 .ok_or(DatastoreClientError::ApiDataError)?;
             if more_results != QueryResultBatchMoreResults::NoMoreResults {
-                Err(DatastoreClientError::AmbiguousResult)?
+                return Err(DatastoreClientError::AmbiguousResult.into());
             }
             if let Some(mut found) = batch.entity_results {
                 match found.len() {
-                    0 => Err(DatastoreClientError::NotFound)?,
+                    0 => Err(DatastoreClientError::NotFound.into()),
                     1 => {
                         let res = found.remove(0);
                         let result: DatastoreEntity = res.try_into()?;
                         Ok(result)
                     }
-                    _ => Err(DatastoreClientError::AmbiguousResult)?,
+                    _ => Err(DatastoreClientError::AmbiguousResult.into()),
                 }
             } else {
-                Err(DatastoreClientError::NotFound)?
+                Err(DatastoreClientError::NotFound.into())
             }
         }
-        None => Err(DatastoreClientError::NotFound)?,
+        None => Err(DatastoreClientError::NotFound.into()),
     }
 }
 
@@ -149,8 +157,10 @@ async fn get_page(
 ) -> Result<DatastoreEntityCollection, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
-    let mut req = RunQueryRequest::default();
-    req.query = Some(query.clone());
+    let req = RunQueryRequest {
+        query: Some(query.clone()),
+        ..Default::default()
+    };
     let resp: RunQueryResponse = projects
         .run_query(req, connection.get_project_name())
         .execute()
@@ -183,7 +193,7 @@ async fn get_page(
                 Ok(DatastoreEntityCollection::default())
             }
         }
-        None => Err(DatastoreClientError::NotFound)?,
+        None => Err(DatastoreClientError::NotFound.into()),
     }
 }
 
@@ -212,7 +222,7 @@ where
         connection: &impl DatastoreConnection,
     ) -> Result<ResultCollection<T>, DatastorersError> {
         if !self.has_more_results {
-            Err(DatastoreClientError::NoMorePages)?
+            return Err(DatastoreClientError::NoMorePages.into());
         }
         let mut query = self.query.ok_or(DatastoreClientError::ApiDataError)?;
         let end_cursor = self.end_cursor.ok_or(DatastoreClientError::ApiDataError)?;
@@ -254,7 +264,7 @@ fn key_has_id(key: &Option<Key>) -> Result<bool, DatastoreClientError> {
     match key {
         Some(k) => {
             if let Some(path) = &k.path {
-                if path.len() > 0 {
+                if !path.is_empty() {
                     return Ok(path[0].id.is_some());
                 }
             }
@@ -267,7 +277,7 @@ fn key_has_id(key: &Option<Key>) -> Result<bool, DatastoreClientError> {
 fn parse_mutation_result(result: &MutationResult) -> Result<Option<Key>, DatastorersError> {
     if let Some(conflict_detected) = result.conflict_detected {
         if conflict_detected {
-            Err(DatastoreClientError::DataConflict)?
+            return Err(DatastoreClientError::DataConflict.into());
         }
     }
     Ok(result.key.clone())
@@ -282,30 +292,32 @@ pub async fn commit_one(
     let mut result_entity = entity.clone();
     let ent: Entity = entity.try_into()?;
 
-    let mut mutation = Mutation::default();
-    mutation.upsert = Some(ent);
-    mutation.base_version = base_version;
+    let mutation = Mutation {
+        upsert: Some(ent),
+        base_version,
+        ..Default::default()
+    };
     let cre: CommitResponse = commit(vec![mutation], connection).await?;
 
     // The commit result shall contain a key that we can assign to the entity in order to later
     // be able to update it
     if let Some(results) = &cre.mutation_results {
         match results.len() {
-            0 => Err(DatastoreClientError::KeyAssignmentFailed)?,
+            0 => return Err(DatastoreClientError::KeyAssignmentFailed.into()),
             1 => {
                 let assigned_key = parse_mutation_result(&results[0])?;
                 if is_insert {
                     if let Some(key) = assigned_key {
                         result_entity.set_key(Some(key));
                     } else {
-                        Err(DatastoreClientError::KeyAssignmentFailed)?
+                        return Err(DatastoreClientError::KeyAssignmentFailed.into());
                     }
                 }
             }
-            _ => Err(DatastoreClientError::AmbiguousResult)?,
+            _ => return Err(DatastoreClientError::AmbiguousResult.into()),
         }
     } else {
-        Err(DatastoreClientError::KeyAssignmentFailed)?
+        return Err(DatastoreClientError::KeyAssignmentFailed.into());
     }
     Ok(result_entity)
 }
@@ -316,19 +328,21 @@ pub async fn delete_one(
 ) -> Result<(), DatastorersError> {
     let key = entity.key().ok_or(DatastoreClientError::NotFound)?; // No key to delete
 
-    let mut mutation = Mutation::default();
-    mutation.delete = Some(key);
-    mutation.base_version = entity.version();
+    let mutation = Mutation {
+        delete: Some(key),
+        base_version: entity.version(),
+        ..Default::default()
+    };
     let cre: CommitResponse = commit(vec![mutation], connection).await?;
 
     // Assert that we have a commit result
     if let Some(results) = &cre.mutation_results {
         match results.len() {
-            0 => Err(DatastoreClientError::DeleteFailed)?,
+            0 => Err(DatastoreClientError::DeleteFailed.into()),
             1 => parse_mutation_result(&results[0]).map(|_| ()), // Success
-            _ => Err(DatastoreClientError::AmbiguousResult)?,
+            _ => Err(DatastoreClientError::AmbiguousResult.into()),
         }
     } else {
-        Err(DatastoreClientError::DeleteFailed)?
+        Err(DatastoreClientError::DeleteFailed.into())
     }
 }

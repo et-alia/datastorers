@@ -3,8 +3,7 @@ name: Rust
 on:
   push:
     branches: [ master ]
-  pull_request:
-    branches: [ master ]
+  pull_request: {}
 
 env:
   CARGO_TERM_COLOR: always
@@ -27,6 +26,10 @@ jobs:
         TEST_PROJECT_NAME: ${{ secrets.TEST_PROJECT_NAME }}
       run: cargo test --verbose --features integration_tests
     - name: Run clippy
-      run: cargo clippy -- -D warnings
+      run: cargo clippy --all-targets --all-features -- -D warnings -D clippy::all
     - name: Run clippy for derives
-      run: cd datastore_entity_derives && cargo clippy -- -D warnings
+      run: cd datastore_entity_derives && cargo clippy --all-targets --all-features -- -D warnings -D clippy::all
+    - name: Run rustfmt check
+      run: cargo fmt -- --check
+    - name: Run rustfmt check for derives
+      run: cd datastore_entity_derives && cargo fmt -- --check

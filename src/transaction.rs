@@ -36,7 +36,7 @@ impl TransactionConnection<'_> {
     ) -> Result<TransactionConnection<'_>, DatastorersError> {
         if connection.get_transaction_id().is_some() {
             // Transaction already in progress!
-            return Err(DatastoreClientError::TransactionInProgress)?;
+            return Err(DatastoreClientError::TransactionInProgress.into());
         }
 
         let client = connection.get_client();
@@ -59,14 +59,19 @@ impl TransactionConnection<'_> {
         })
     }
 
-    pub fn push_save(&mut self, item: impl TryInto<DatastoreEntity, Error = DatastorersError>) -> Result<(), DatastorersError> {
+    pub fn push_save(
+        &mut self,
+        item: impl TryInto<DatastoreEntity, Error = DatastorersError>,
+    ) -> Result<(), DatastorersError> {
         let entity: DatastoreEntity = item.try_into()?;
         let base_version = entity.version();
         let ent: Entity = entity.try_into()?;
 
-        let mut mutation = Mutation::default();
-        mutation.upsert = Some(ent);
-        mutation.base_version = base_version;
+        let mutation = Mutation {
+            upsert: Some(ent),
+            base_version,
+            ..Default::default()
+        };
 
         self.mutations.push(mutation);
 
@@ -79,10 +84,11 @@ impl TransactionConnection<'_> {
     ) -> Result<(), DatastorersError> {
         let entity: DatastoreEntity = item.try_into()?;
         let base_version = entity.version();
-        let mut mutation = Mutation::default();
-
-        mutation.delete = entity.key();
-        mutation.base_version = base_version;
+        let mutation = Mutation {
+            delete: entity.key(),
+            base_version,
+            ..Default::default()
+        };
 
         self.mutations.push(mutation);
 
@@ -108,12 +114,12 @@ impl TransactionConnection<'_> {
             for result in results {
                 if let Some(conflict_detected) = result.conflict_detected {
                     if conflict_detected {
-                        Err(DatastoreClientError::DataConflict)?
+                        return Err(DatastoreClientError::DataConflict.into());
                     }
                 }
             }
         } else {
-            Err(DatastoreClientError::ApiDataError)?
+            return Err(DatastoreClientError::ApiDataError.into());
         }
         Ok(())
     }

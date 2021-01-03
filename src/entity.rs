@@ -17,8 +17,8 @@ use std::ops::{Deref, DerefMut};
 //
 pub struct DatastoreValue(pub Value);
 
-impl Default for DatastoreValue {
-    fn default() -> Self {
+impl DatastoreValue {
+    pub fn empty() -> Self {
         DatastoreValue(Value {
             array_value: None,
             blob_value: None,
@@ -70,6 +70,7 @@ impl Display for DatastoreProperties {
 }
 
 impl DatastoreProperties {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> DatastoreProperties {
         DatastoreProperties(BTreeMap::<String, Value>::new())
     }
@@ -79,7 +80,7 @@ impl DatastoreProperties {
     }
 
     pub fn into_map(self) -> BTreeMap<String, Value> {
-        return self.0;
+        self.0
     }
 
     pub fn get<T: Deserialize>(&mut self, key: &str) -> Result<T, DatastorersError> {
@@ -93,13 +94,10 @@ impl DatastoreProperties {
     }
 
     pub fn set<T: Serialize>(&mut self, key: &str, value: T) -> Result<(), DatastorersError> {
-        Ok(match value.serialize()? {
-            Some(value) => {
-                self.0.insert(key.to_string(), value.0);
-                ()
-            }
-            None => (),
-        })
+        if let Some(value) = value.serialize()? {
+            self.0.insert(key.to_string(), value.0);
+        }
+        Ok(())
     }
 }
 
@@ -184,7 +182,7 @@ impl TryFrom<EntityResult> for DatastoreEntity {
 
             Ok(DatastoreEntity::from(entity.key, props, version))
         } else {
-            Err(DatastoreParseError::NoResult)?
+            Err(DatastoreParseError::NoResult.into())
         }
     }
 }
@@ -209,7 +207,7 @@ impl TryFrom<DatastoreEntity> for Entity {
         let properties: DatastoreProperties = entity.try_into()?;
 
         Ok(Entity {
-            key: key,
+            key,
             properties: Some(properties.into_map()),
         })
     }

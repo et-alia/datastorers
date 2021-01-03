@@ -157,7 +157,7 @@ async fn test_get_by_id() -> Result<(), DatastorersError> {
     // Insert an entity with some random values
     let entity = generate_random_entity();
     let original_string = entity.prop_string.clone();
-    let original_int = entity.prop_int.clone();
+    let original_int = entity.prop_int;
 
     let inserted = entity.commit(&connection).await?;
 
@@ -270,7 +270,9 @@ async fn test_get_collection_by_property() -> Result<(), DatastorersError> {
     );
 
     // Compare the two int arrays to validate that all inserted items have been fetched
-    assert_eq!(fetched_int_props.sort(), int_props.sort());
+    fetched_int_props.sort_unstable(); // Sort in place
+    int_props.sort_unstable(); // Sort in place
+    assert_eq!(fetched_int_props, int_props);
 
     Ok(())
 }
