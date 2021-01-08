@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use datastore_entity::connection::DatastoreConnection;
+use datastorers::connection::DatastoreConnection;
 use gcp_auth::{AuthenticationManager, Error as GCPAuthError};
 use google_api_auth::GetAccessToken;
 use google_datastore1::Client;

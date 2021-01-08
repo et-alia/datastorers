@@ -23,7 +23,7 @@ where
 {
     fn deserialize(value: DatastoreValue) -> DeResult<Self>;
 
-    /// If the value is missing from [`datastore_entity::DatastoreProperties`], provide this default.
+    /// If the value is missing from [`datastorers::DatastoreProperties`], provide this default.
     /// The default is None, meaning the missing value is propagated as an error.
     /// This is blanket implemented for Option fields.
     fn default_missing() -> Option<Self> {

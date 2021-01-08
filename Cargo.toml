@@ -1,5 +1,5 @@
 [package]
-name = "datastore_entity"
+name = "datastorers"
 version = "0.0.1"
 authors = ["Andreas Pålsson <a.palsson@gmail.com>", "Erik Zivkovic <erik@zivkovic.se>"]
 edition = "2018"
