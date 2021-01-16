@@ -215,11 +215,16 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
         .collect::<Vec<_>>();
 
     let tokens = quote! {
-        impl #name {
-            pub const fn kind(&self) -> &'static str {
+        impl datastorers::Kind for #name {
+            fn kind(&self) -> &'static str {
                 #kind_str
             }
 
+            fn kind_str() -> &'static str {
+                #kind_str
+            }
+        }
+        impl #name {
             pub fn id(&self) -> std::option::Option<&google_datastore1::schemas::Key> {
                 #self_key_field_expr
             }

@@ -1,6 +1,7 @@
 use chrono::{NaiveDateTime, Utc};
 use datastorers::deserialize::Deserialize;
 use datastorers::serialize::Serialize;
+use datastorers::Kind;
 use datastorers::{DatastoreEntity, DatastoreManaged, DatastoreValue, DatastorersError};
 use float_cmp::approx_eq;
 use google_datastore1::schemas::Key;
@@ -86,7 +87,10 @@ fn into_datastore_entity_and_back() -> Result<(), DatastorersError> {
         prop_date: now,
     };
 
+    // Kind must exist as an instance trait method
     assert_eq!("thingy", thing.kind());
+    // Kind must exist as a static trait method
+    assert_eq!("thingy", Thing::kind_str());
     assert_eq!(None, thing.id());
 
     let entity: DatastoreEntity = thing.clone().try_into()?;

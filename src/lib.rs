@@ -30,6 +30,16 @@ use std::convert::TryInto;
 
 const DEFAULT_PAGE_SIZE: i32 = 50;
 
+pub trait Kind {
+    /// Get the Entity's kind
+    /// See [kind_str](Kind::kind_str) for a static trait method that returns the same value
+    fn kind(&self) -> &'static str;
+
+    /// Get the Entity's kind
+    /// See [kind](Kind::kind) for an instance trait method that returns the same value
+    fn kind_str() -> &'static str;
+}
+
 pub async fn get_one_by_id(
     id: i64,
     kind: String,
