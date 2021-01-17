@@ -5,7 +5,7 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Expr, Ident, Lit, Meta, Type};
+use syn::{Data, DeriveInput, Expr, Ident, Lit, Meta, Type, TypePath};
 
 struct EntityGetter {
     // Property name in the datastore entity
@@ -54,6 +54,11 @@ fn build_field_meta(
     }
 }
 
+struct KeyProperty {
+    name: String,
+    tp: TypePath,
+}
+
 #[proc_macro_derive(
     DatastoreManaged,
     attributes(kind, key, indexed, property, page_size, version)
@@ -63,7 +68,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
 
     let mut kind: Option<String> = None;
     let mut version_field: Option<String> = None;
-    let mut key_field: Option<String> = None;
+    let mut key_field: Option<KeyProperty> = None;
     let mut page_size: Expr = parse_expr("None");
 
     let fields: Vec<FieldMeta> = match ast.data {
@@ -100,8 +105,12 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                         Meta::Path(ref path) => {
                             match path.get_ident().unwrap().to_string().as_str() {
                                 "key" => {
-                                    key_field =
-                                        Some(field.ident.as_ref().unwrap().clone().to_string());
+                                    if let Type::Path(tp) = &field.ty {
+                                        key_field = Some(KeyProperty {
+                                            name: field.ident.as_ref().unwrap().clone().to_string(),
+                                            tp: tp.clone(),
+                                        });
+                                    }
                                 }
                                 "version" => {
                                     version_field =
@@ -143,7 +152,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                         match &key_field {
                             Some(key_field) => {
                                 // Ignore key field if set
-                                if key_field == &struct_property_name {
+                                if key_field.name == struct_property_name {
                                     continue;
                                 }
                             }
@@ -181,12 +190,13 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
         .collect::<Vec<_>>();
 
     let kind_str = kind.unwrap();
-    let key_field_str = key_field.unwrap();
-    let self_key_field_expr = parse_expr(&format!("self.{}.as_ref()", key_field_str));
-    let entity_key_field_expr = parse_expr(&format!("entity.{}", key_field_str));
+    let key_property = key_field.unwrap();
+    let self_key_field_expr = parse_expr(&format!("&self.{}", key_property.name));
+    let entity_key_field_expr = parse_expr(&format!("entity.{}", key_property.name));
+    let key_field_type = key_property.tp;
 
     let mut entity_version = parse_expr("None");
-    let mut meta_field_assignements = vec![parse_expr(&format!("{}: key", &key_field_str))];
+    let mut meta_field_assignements = vec![parse_expr(&format!("{}: key", &key_property.name))];
     if let Some(version) = version_field {
         meta_field_assignements.push(parse_expr(&format!("{}: version", &version)));
         entity_version = parse_expr(&format!("entity.{}", &version));
@@ -225,13 +235,14 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             }
         }
         impl #name {
-            pub fn id(&self) -> std::option::Option<&google_datastore1::schemas::Key> {
+            pub fn id(&self) -> &#key_field_type {
                 #self_key_field_expr
             }
 
-            pub async fn get_one_by_id(id: i64, connection: &impl datastorers::DatastoreConnection) -> Result<#name, datastorers::DatastorersError>
+            pub async fn get_one_by_id(key_path: &impl datastorers::KeyPath, connection: &impl datastorers::DatastoreConnection) -> Result<#name, datastorers::DatastorersError>
             {
-                let datastore_entity = datastorers::get_one_by_id(id, #kind_str.to_string(), connection).await?;
+                use std::convert::TryInto;
+                let datastore_entity = datastorers::get_one_by_id(key_path, connection).await?;
                 let result: #name = datastore_entity
                     .try_into()?;
                 return Ok(result)
@@ -239,6 +250,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             #(
                 pub async fn #entity_getters(value: impl datastorers::serialize::Serialize, connection: &impl datastorers::DatastoreConnection) -> Result<#name, datastorers::DatastorersError>
                 {
+                    use std::convert::TryInto;
                     let datastore_entity = datastorers::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection).await?;
                     let result: #name = datastore_entity
                         .try_into()?;
@@ -249,6 +261,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             #(
                 pub async fn #entity_collection_getters(value: impl datastorers::serialize::Serialize, connection: &impl datastorers::DatastoreConnection) -> Result<datastorers::ResultCollection<#name>, datastorers::DatastorersError>
                 {
+                    use std::convert::TryInto;
                     let entities = datastorers::get_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), #page_size, connection).await?;
                     let result: datastorers::ResultCollection<#name> = entities
                         .try_into()?;
@@ -258,6 +271,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
 
             pub async fn commit(self, connection: &impl datastorers::DatastoreConnection) -> Result<#name, datastorers::DatastorersError>
             {
+                use std::convert::TryInto;
                 let result_entity = datastorers::commit_one(
                     self.try_into()?,
                     connection
@@ -269,6 +283,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
 
             pub async fn delete(self, connection: &impl datastorers::DatastoreConnection) -> Result<(), datastorers::DatastorersError>
             {
+                use std::convert::TryInto;
                 datastorers::delete_one(self.try_into()?, connection).await
             }
         }
@@ -277,20 +292,13 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             type Error = datastorers::DatastorersError;
 
             fn try_from(mut entity: datastorers::DatastoreEntity) -> Result<Self, Self::Error> {
-                let key = entity.key();
+                use std::convert::TryInto;
+                let key = entity
+                    .key()
+                    .ok_or(datastorers::DatastoreKeyError::NoKey)?
+                    .try_into()?;
                 let version = entity.version();
                 let mut properties = datastorers::DatastoreProperties::try_from(entity)?;
-                fn optional_ok<T>(val: T) -> Result<Option<T>, datastorers::DatastoreParseError> {
-                    Ok(Some(val))
-                }
-                fn optional_err<T>(err: datastorers::DatastoreParseError) -> Result<Option<T>, datastorers::DatastoreParseError> {
-                    if err == datastorers::DatastoreParseError::NoSuchValue {
-                        // Vale not set => the optional representation is None
-                        Ok(None)
-                    } else {
-                        Err(err) // Forward the error
-                    }
-                }
                 Ok(
                     #name {
                         #(
@@ -308,25 +316,15 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             type Error = datastorers::DatastorersError;
 
             fn try_from(entity: #name) -> Result<Self, Self::Error> {
+                use datastorers::KeyPath;
                 let mut properties = datastorers::DatastoreProperties::new();
                 #(
                     #from_properties?;
                 )*
 
-                fn generate_empty_key() -> std::option::Option<google_datastore1::schemas::Key> {
-                    Some(google_datastore1::schemas::Key {
-                        partition_id: None,
-                        path: Some(vec![google_datastore1::schemas::PathElement {
-                            id: None,
-                            kind: Some(#kind_str.to_string()),
-                            name: None,
-                        }]),
-                    })
-                }
-
                 Ok(
                     datastorers::DatastoreEntity::from(
-                        #entity_key_field_expr.or_else(generate_empty_key),
+                        Some(#entity_key_field_expr.get_key()),
                         properties,
                         #entity_version,
                     )

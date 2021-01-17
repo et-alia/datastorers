@@ -39,6 +39,27 @@ pub enum DatastoreClientError {
     TransactionInProgress,
 }
 
+#[derive(Error, Debug, PartialEq)]
+pub enum DatastoreKeyError {
+    #[error("no key found")]
+    NoKey,
+    #[error("no key path found")]
+    NoKeyPath,
+    #[error("no key path element found")]
+    NoKeyPathElement,
+    #[error("no key kind found")]
+    NoKind,
+    #[error("key parsing failed, expected kind {expected:?} found {found:?}")]
+    WrongKind {
+        expected: &'static str,
+        found: String,
+    },
+    #[error("expected identifier of type id (i64) but did not find it")]
+    ExpectedId,
+    #[error("expected identifier of type name (String) but did not find it")]
+    ExpectedName,
+}
+
 #[derive(Error, Debug)]
 pub enum DatastorersError {
     #[error(transparent)]
@@ -51,4 +72,6 @@ pub enum DatastorersError {
     DatastoreSerializeError(#[from] DatastoreSerializeError),
     #[error(transparent)]
     DatastoreDeserializeError(#[from] DatastoreDeserializeError),
+    #[error(transparent)]
+    DatastoreKeyError(#[from] DatastoreKeyError),
 }
