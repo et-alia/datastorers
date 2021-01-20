@@ -5,6 +5,7 @@ pub mod connection;
 pub mod deserialize;
 mod entity;
 pub mod error;
+mod identifier;
 pub mod serialize;
 pub mod transaction;
 
@@ -13,15 +14,17 @@ pub use crate::entity::{
     DatastoreEntity, DatastoreEntityCollection, DatastoreProperties, DatastoreValue,
     ResultCollection,
 };
-pub use crate::error::{DatastoreClientError, DatastoreParseError, DatastorersError};
+pub use crate::error::*;
 
 pub use datastore_entity_derives::DatastoreManaged;
+
+pub use identifier::*;
 
 use google_datastore1::schemas::{
     BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
     Filter, Key, KindExpression, LookupRequest, LookupResponse, Mutation, MutationResult,
-    PathElement, PropertyFilter, PropertyFilterOp, PropertyReference, Query,
-    QueryResultBatchMoreResults, ReadOptions, RunQueryRequest, RunQueryResponse,
+    PropertyFilter, PropertyFilterOp, PropertyReference, Query, QueryResultBatchMoreResults,
+    ReadOptions, RunQueryRequest, RunQueryResponse,
 };
 
 use crate::serialize::Serialize;
@@ -41,21 +44,13 @@ pub trait Kind {
 }
 
 pub async fn get_one_by_id(
-    id: i64,
-    kind: String,
+    key_path: &impl KeyPath,
     connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntity, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
 
-    let key = Key {
-        partition_id: None,
-        path: Some(vec![PathElement {
-            id: Some(id),
-            kind: Some(kind),
-            name: None,
-        }]),
-    };
+    let key = key_path.get_key();
     let req = LookupRequest {
         keys: Some(vec![key]),
         read_options: Some(ReadOptions {

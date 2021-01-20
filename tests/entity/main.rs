@@ -1,10 +1,9 @@
 use chrono::{NaiveDateTime, Utc};
 use datastorers::deserialize::Deserialize;
 use datastorers::serialize::Serialize;
-use datastorers::Kind;
 use datastorers::{DatastoreEntity, DatastoreManaged, DatastoreValue, DatastorersError};
+use datastorers::{IdentifierId, IdentifierNone, Kind};
 use float_cmp::approx_eq;
-use google_datastore1::schemas::Key;
 use std::convert::TryInto;
 use std::error::Error;
 
@@ -25,7 +24,7 @@ impl std::fmt::Display for TestError {
 #[kind = "thingy"]
 pub struct Thing {
     #[key]
-    pub key_is_good: Option<Key>,
+    pub key_is_good: IdentifierId<Self>,
     pub prop_string: String,
     pub prop_integer: i64,
     pub prop_double: f64,
@@ -38,7 +37,7 @@ pub struct Thing {
 #[kind = "thingy"]
 pub struct VersionedThing {
     #[key]
-    pub key_is_good: Option<Key>,
+    pub key_is_good: IdentifierId<Self>,
 
     #[version]
     pub thing_version: Option<i64>,
@@ -58,7 +57,7 @@ fn datastore_timestamp_now() -> NaiveDateTime {
 fn test_version() -> Result<(), DatastorersError> {
     let test_version = 5345345;
     let versioned_thing = VersionedThing {
-        key_is_good: Default::default(),
+        key_is_good: IdentifierId::id(None, IdentifierNone {}),
         thing_version: Some(test_version),
         prop_string: "StrStr".to_string(),
     };
@@ -78,7 +77,7 @@ fn test_version() -> Result<(), DatastorersError> {
 fn into_datastore_entity_and_back() -> Result<(), DatastorersError> {
     let now = datastore_timestamp_now();
     let thing = Thing {
-        key_is_good: Default::default(),
+        key_is_good: IdentifierId::id(None, IdentifierNone::none()),
         prop_string: "StrStr".to_string(),
         prop_integer: 777,
         prop_double: 987.12,
@@ -91,7 +90,7 @@ fn into_datastore_entity_and_back() -> Result<(), DatastorersError> {
     assert_eq!("thingy", thing.kind());
     // Kind must exist as a static trait method
     assert_eq!("thingy", Thing::kind_str());
-    assert_eq!(None, thing.id());
+    assert_eq!(None, thing.id().id);
 
     let entity: DatastoreEntity = thing.clone().try_into()?;
 

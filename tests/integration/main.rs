@@ -1,19 +1,19 @@
 mod connection;
 use crate::connection::create_test_connection;
 use datastorers::transaction::TransactionConnection;
-use datastorers::{DatastoreClientError, DatastoreManaged, DatastoreParseError, DatastorersError};
-use google_datastore1::schemas::Key;
+use datastorers::{
+    DatastoreClientError, DatastoreManaged, DatastoreParseError, DatastorersError, IdentifierId,
+    IdentifierNone, Kind,
+};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-
-use std::convert::TryInto;
 
 #[derive(DatastoreManaged, Clone, Debug)]
 #[kind = "Test"]
 #[page_size = 2]
 pub struct TestEntity {
     #[key]
-    pub key: Option<Key>,
+    pub key: IdentifierId<Self>,
 
     #[version]
     pub version: Option<i64>,
@@ -39,7 +39,7 @@ pub struct TestEntity {
 #[page_size = 2]
 pub struct TestEntityOptional {
     #[key]
-    pub key: Option<Key>,
+    pub key: IdentifierId<Self>,
 
     #[indexed]
     #[property = "Name"]
@@ -58,7 +58,7 @@ pub struct TestEntityOptional {
 impl Default for TestEntityOptional {
     fn default() -> Self {
         TestEntityOptional {
-            key: None,
+            key: IdentifierId::id(None, IdentifierNone::none()),
             prop_string: None,
             prop_bool: None,
             prop_int: None,
@@ -80,9 +80,13 @@ fn generate_random_int() -> i64 {
     thread_rng().gen()
 }
 
+fn generate_random_id<T: Kind>() -> IdentifierId<T, IdentifierNone> {
+    IdentifierId::id(Some(generate_random_int()), IdentifierNone::none())
+}
+
 fn generate_random_entity() -> TestEntity {
     TestEntity {
-        key: None,
+        key: IdentifierId::id(None, IdentifierNone::none()),
         version: None,
         prop_string: generate_random_string(10),
         prop_bool: generate_random_bool(),
@@ -130,9 +134,9 @@ async fn test_insert_and_update() -> Result<(), DatastorersError> {
     let original_bool_value = original_entity.prop_bool;
 
     let mut test_entity = original_entity.commit(&connection).await?;
-    assert!(test_entity.key.is_some());
+    assert!(test_entity.key.id.is_some());
     // Save id for later validations
-    let id_after_insert = test_entity.id().unwrap().clone();
+    let id_after_insert = test_entity.id().id.unwrap();
 
     // Update same item
     test_entity.prop_bool = !original_bool_value;
@@ -142,7 +146,7 @@ async fn test_insert_and_update() -> Result<(), DatastorersError> {
     assert_eq!(updated.prop_bool, !original_bool_value);
 
     // But id shall remain the same
-    assert_eq!(&id_after_insert, updated.id().unwrap());
+    assert_eq!(id_after_insert, updated.id().id.unwrap());
 
     Ok(())
 }
@@ -160,14 +164,14 @@ async fn test_get_by_id() -> Result<(), DatastorersError> {
     let inserted = entity.commit(&connection).await?;
 
     // Try fetch with a random id, to validate that not found check works
-    let random_id = generate_random_int();
+    let random_id = generate_random_id::<TestEntity>();
     assert_client_error(
-        TestEntity::get_one_by_id(random_id, &connection).await,
+        TestEntity::get_one_by_id(&random_id, &connection).await,
         DatastoreClientError::NotFound,
     );
 
     // Success
-    let inserted_id = inserted.key.unwrap().path.unwrap()[0].id.unwrap();
+    let inserted_id = &inserted.key;
     let fetched_entity = TestEntity::get_one_by_id(inserted_id, &connection).await?;
 
     // Validate content of the fetched entity
@@ -445,9 +449,7 @@ async fn test_optional_values() -> Result<(), DatastorersError> {
     let connection = create_test_connection().await;
     let def = TestEntityOptional::default();
     let mut inserted_empty = def.commit(&connection).await?;
-    let inserted_id = inserted_empty.clone().key.unwrap().path.unwrap()[0]
-        .id
-        .unwrap();
+    let inserted_id = inserted_empty.clone().key;
     // Set string and bool value and commit
     let string_value = generate_random_string(10);
     inserted_empty.prop_string = Some(string_value.clone());
@@ -455,7 +457,7 @@ async fn test_optional_values() -> Result<(), DatastorersError> {
     inserted_empty.commit(&connection).await?;
 
     // Fetch and validate that the inserted properties are saved
-    let mut fetched_entity = TestEntityOptional::get_one_by_id(inserted_id, &connection).await?;
+    let mut fetched_entity = TestEntityOptional::get_one_by_id(&inserted_id, &connection).await?;
     assert_eq!(&fetched_entity.prop_string, &Some(string_value.clone()));
     assert_eq!(&fetched_entity.prop_bool, &Some(true));
     assert_eq!(&fetched_entity.prop_int, &None);
@@ -463,7 +465,7 @@ async fn test_optional_values() -> Result<(), DatastorersError> {
 
     // Try fetch with the non optional type, shalll fail since not all values are set!
     assert_parse_error(
-        TestEntity::get_one_by_id(inserted_id, &connection).await,
+        TestEntity::get_one_by_id(&inserted_id, &connection).await,
         DatastoreParseError::NoSuchValue,
     );
     // Set the rest of the values
@@ -497,7 +499,7 @@ async fn test_coliding_update() -> Result<(), DatastorersError> {
     let connection = create_test_connection().await;
     // Insert one entity
     let inserted = generate_random_entity().commit(&connection).await?;
-    let inserted_id = inserted.key.unwrap().path.unwrap()[0].id.unwrap();
+    let inserted_id = &inserted.key;
 
     // Go fetch it two times (and change both fetched entities)
     let mut a = TestEntity::get_one_by_id(inserted_id, &connection).await?;
@@ -529,7 +531,7 @@ async fn test_coliding_delete() -> Result<(), DatastorersError> {
     let connection = create_test_connection().await;
     // Insert one entity
     let inserted = generate_random_entity().commit(&connection).await?;
-    let inserted_id = inserted.key.unwrap().path.unwrap()[0].id.unwrap();
+    let inserted_id = &inserted.key;
 
     // Go fetch it two times (and change both fetched entities)
     let mut a = TestEntity::get_one_by_id(inserted_id, &connection).await?;
@@ -562,10 +564,10 @@ async fn test_transaction_with_update() -> Result<(), DatastorersError> {
 
     // Create two entities
     let inserted = generate_random_entity().commit(&connection).await?;
-    let inserted_id_a = inserted.key.unwrap().path.unwrap()[0].id.unwrap();
+    let inserted_id_a = &inserted.key;
     let original_prop_int_a = inserted.prop_int;
     let inserted = generate_random_entity().commit(&connection).await?;
-    let inserted_id_b = inserted.key.unwrap().path.unwrap()[0].id.unwrap();
+    let inserted_id_b = &inserted.key;
     let original_prop_int_b = inserted.prop_int;
 
     // Create a transaction, use the transaction to fetch and modify both entities
