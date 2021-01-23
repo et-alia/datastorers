@@ -1,12 +1,15 @@
-mod connection;
-use crate::connection::create_test_connection;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
+
 use datastorers::transaction::TransactionConnection;
 use datastorers::{
     DatastoreClientError, DatastoreManaged, DatastoreParseError, DatastorersError, IdentifierId,
     IdentifierNone, Kind,
 };
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+
+use crate::connection::create_test_connection;
+
+mod connection;
 
 #[derive(DatastoreManaged, Clone, Debug)]
 #[kind = "Test"]
