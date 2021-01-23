@@ -1,6 +1,6 @@
 use datastorers::{
-    DatastoreEntity, DatastoreKeyError, DatastoreManaged, DatastoreProperties, DatastorersError,
-    IdentifierId, IdentifierName, IdentifierNone, KeyPath, KeyPathElement, Kind,
+    id, name, DatastoreEntity, DatastoreKeyError, DatastoreManaged, DatastoreProperties,
+    DatastorersError, IdentifierId, IdentifierName, IdentifierNone, KeyPath, KeyPathElement, Kind,
 };
 use google_datastore1::schemas::{Key, PathElement};
 use std::convert::TryInto;
@@ -311,4 +311,49 @@ fn deserialize_from_entity_without_key() {
 
     // We couldn't find a key at all, which is an error
     assert_eq!(DatastoreKeyError::NoKey, error);
+}
+
+#[test]
+fn test_id_macro() {
+    let identifier: IdentifierId<KindA> = id![1001];
+    assert_eq!(1001, identifier.id.unwrap());
+}
+
+#[test]
+fn test_id_macro_none() {
+    let identifier: IdentifierId<KindA> = id![None];
+    assert_eq!(None, identifier.id);
+}
+
+#[test]
+fn test_name_macro() {
+    let identifier: IdentifierName<KindB> = name!["name"];
+    assert_eq!("name", identifier.name.unwrap());
+}
+
+#[test]
+fn test_name_macro_none() {
+    let identifier: IdentifierName<KindB> = name![None];
+    assert_eq!(None, identifier.name);
+}
+
+#[test]
+fn test_id_macro_name_macro() {
+    let identifier: IdentifierId<KindA, IdentifierName<KindB>> = id![2001, name!["thing"]];
+    assert_eq!(2001, identifier.id.unwrap());
+    assert_eq!("thing", identifier.ancestor.name.unwrap());
+}
+
+#[test]
+fn test_id_macro_none_name_macro() {
+    let identifier: IdentifierId<KindA, IdentifierName<KindB>> = id![None, name!["thing"]];
+    assert_eq!(None, identifier.id);
+    assert_eq!("thing", identifier.ancestor.name.unwrap());
+}
+
+#[test]
+fn test_name_macro_none_name_macro() {
+    let identifier: IdentifierName<KindA, IdentifierName<KindB>> = name![None, name!["thing"]];
+    assert_eq!(None, identifier.name);
+    assert_eq!("thing", identifier.ancestor.name.unwrap());
 }
