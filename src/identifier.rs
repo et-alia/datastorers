@@ -66,7 +66,7 @@ pub enum Identifier {
 ///
 /// Example:
 /// ```
-/// use datastorers::*;
+/// # use datastorers::*;
 /// #[derive(DatastoreManaged)]
 /// #[kind="my_entity"]
 /// struct MyEntity {
@@ -205,7 +205,7 @@ where
 ///
 /// Example:
 /// ```
-/// use datastorers::*;
+/// # use datastorers::*;
 /// #[derive(DatastoreManaged)]
 /// #[kind="my_entity"]
 /// struct MyEntity {
@@ -346,7 +346,7 @@ where
 ///
 /// Example:
 /// ```
-/// use datastorers::*;
+/// # use datastorers::*;
 /// #[derive(DatastoreManaged)]
 /// #[kind="my_entity"]
 /// struct MyEntity {
@@ -387,4 +387,100 @@ impl KeyPathElement for IdentifierNone {
     ) -> Result<Self, DatastorersError> {
         Ok(Self {})
     }
+}
+
+/// A macro for simplifying the creation of a chain of [IdentifierId](IdentifierId),
+/// [IdentifierName](IdentifierName), or [IdentifierNone](IdentifierNone) structs.
+///
+/// For example, writing:
+/// ```
+/// # use datastorers::*;
+/// # #[derive(DatastoreManaged)]
+/// # #[kind="my_entity"]
+/// # struct MyEntity {
+/// #     /// A key path with no ancestors and an identifier id of type i64
+/// #     #[key]
+/// #     key: IdentifierId<Self>,
+/// # }
+/// let key: IdentifierId<MyEntity> = id![5];
+/// ```
+/// is much easier than writing:
+/// ```
+/// # use datastorers::*;
+/// # #[derive(DatastoreManaged)]
+/// # #[kind="my_entity"]
+/// # struct MyEntity {
+/// #     /// A key path with no ancestors and an identifier id of type i64
+/// #     #[key]
+/// #     key: IdentifierId<Self>,
+/// # }
+/// let key: IdentifierId<MyEntity> = IdentifierId::id(Some(5), IdentifierNone::none());
+/// ```
+///
+/// See also [name!](name).
+#[macro_export]
+macro_rules! id {
+    // something like id![None, name![....
+    (None, $($tail:tt)*) => {
+        datastorers::IdentifierId::id(None, $($tail)*)
+    };
+    // something like id![5, name![....
+    ($lit: literal, $($tail:tt)*) => {
+        datastorers::IdentifierId::id(Some($lit), $($tail)*)
+    };
+    // something like id![None]
+    (None) => {
+        datastorers::IdentifierId::id(None, datastorers::IdentifierNone::none())
+    };
+    // something like id![5]
+    ($lit: literal) => {
+        datastorers::IdentifierId::id(Some($lit), datastorers::IdentifierNone::none())
+    };
+}
+
+/// A macro for simplifying the creation of a chain of [IdentifierId](IdentifierId),
+/// [IdentifierName](IdentifierName), or [IdentifierNone](IdentifierNone) structs.
+///
+/// For example, writing:
+/// ```
+/// # use datastorers::*;
+/// # #[derive(DatastoreManaged)]
+/// # #[kind="my_entity"]
+/// # struct MyEntity {
+/// #     #[key]
+/// #     key: IdentifierName<Self>,
+/// # }
+/// let key: IdentifierName<MyEntity> = name!["name"];
+/// ```
+/// is much easier than writing:
+/// ```
+/// # use datastorers::*;
+/// # #[derive(DatastoreManaged)]
+/// # #[kind="my_entity"]
+/// # struct MyEntity {
+/// #     #[key]
+/// #     key: IdentifierName<Self>,
+/// # }
+/// let key: IdentifierName<MyEntity> = IdentifierName::name(Some("name".to_string()), IdentifierNone::none());
+/// ```
+///
+/// See also [id!](id).
+#[macro_export]
+macro_rules! name {
+    // something like name![None, id![....
+    (None, $($tail:tt)*) => {
+        datastorers::IdentifierName::name(None, $($tail)*)
+    };
+    // something like name!["name", id![....
+    ($lit: literal, $($tail:tt)*) => {
+        datastorers::IdentifierName::name(Some($lit.to_string()), $($tail)*)
+    };
+    // something like name![None]
+    (None) => {
+        datastorers::IdentifierName::name(None, datastorers::IdentifierNone::none())
+    };
+    // something like name!["name"]
+    ($lit: literal) => {
+        datastorers::IdentifierName::name(Some($lit.to_string()), datastorers::IdentifierNone::none())
+    };
 }
