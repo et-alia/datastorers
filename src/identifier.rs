@@ -428,6 +428,10 @@ macro_rules! id {
     ($lit: literal, $($tail:tt)*) => {
         datastorers::IdentifierId::id(Some($lit), $($tail)*)
     };
+    // something like id![five, name![....
+    ($e: expr, $($tail:tt)*) => {
+        datastorers::IdentifierId::id(Some($e), $($tail)*)
+    };
     // something like id![None]
     (None) => {
         datastorers::IdentifierId::id(None, datastorers::IdentifierNone::none())
@@ -435,6 +439,10 @@ macro_rules! id {
     // something like id![5]
     ($lit: literal) => {
         datastorers::IdentifierId::id(Some($lit), datastorers::IdentifierNone::none())
+    };
+    // something like id![five]
+    ($e: expr) => {
+        datastorers::IdentifierId::id(Some($e), datastorers::IdentifierNone::none())
     };
 }
 
@@ -475,6 +483,10 @@ macro_rules! name {
     ($lit: literal, $($tail:tt)*) => {
         datastorers::IdentifierName::name(Some($lit.to_string()), $($tail)*)
     };
+    // something like name![name, id![....
+    ($e: expr, $($tail:tt)*) => {
+        datastorers::IdentifierName::name(Some($e.to_string()), $($tail)*)
+    };
     // something like name![None]
     (None) => {
         datastorers::IdentifierName::name(None, datastorers::IdentifierNone::none())
@@ -482,5 +494,9 @@ macro_rules! name {
     // something like name!["name"]
     ($lit: literal) => {
         datastorers::IdentifierName::name(Some($lit.to_string()), datastorers::IdentifierNone::none())
+    };
+    // something like name![name]
+    ($e: expr) => {
+        datastorers::IdentifierName::name(Some($e.to_string()), datastorers::IdentifierNone::none())
     };
 }

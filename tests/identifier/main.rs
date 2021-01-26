@@ -326,6 +326,13 @@ fn test_id_macro_none() {
 }
 
 #[test]
+fn test_id_macro_variable() {
+    let id = 510;
+    let identifier: IdentifierId<KindA> = id![id];
+    assert_eq!(510, identifier.id.unwrap());
+}
+
+#[test]
 fn test_name_macro() {
     let identifier: IdentifierName<KindB> = name!["name"];
     assert_eq!("name", identifier.name.unwrap());
@@ -335,6 +342,13 @@ fn test_name_macro() {
 fn test_name_macro_none() {
     let identifier: IdentifierName<KindB> = name![None];
     assert_eq!(None, identifier.name);
+}
+
+#[test]
+fn test_name_macro_variable() {
+    let s = "thing".to_string();
+    let identifier: IdentifierName<KindB> = name![s];
+    assert_eq!(s, identifier.name.unwrap());
 }
 
 #[test]
