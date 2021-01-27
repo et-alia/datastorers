@@ -4,17 +4,37 @@ Type safe Google Datastore access in Rust!
 
 ## Usage
 
-### Basics
+These are the major parts of the datastorers API surface:
 
-Derive `DatastoreManaged` on a struct:
+| Name                             | Type of API       | What it does                                                                                                 |
+| -------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| `DatastoreManaged`               | Derive macro      | Generates code that enhances the functionality of a struct so that it can be used to model a datastore table |
+| `DatastoreConnection`            | Trait             | Implement this trait to be able to connect to datastore. An example implementation exists in the integration tests. |
+| `TransactionConnection`          | Struct            | A connection used for transactions. |
+| `#[kind = "Kind"]`               | Attribute         | The kind of the datastore table |
+| `#[page_size = 25]`              | Attribute         | How many items to fetch per page when using paged APIs |
+| `#[key]`                         | Attribute         | Mark a property as the key. The key property must be of type `IdentifierId` or `IdentifierName` |
+| `#[indexed]`                     | Attribute         | Mark a property as indexed, this is used in certain generated functions. |
+| `#[property = "Name"]`           | Attribute         | By default property names refer to datastore table columns. Apply this attribute to use another name. |
+| `IdentifierId<Kind, Ancestor>`   | Struct            | The id part of an identifier. The `Kind` parameter is `Self` in the simplest case, and `Ancestor` can be omitted unless there are ancestors in the key path. Can be further composed with `IdentifierName` for full key paths. |
+| `id![<number>, path...]`         | Declarative macro | Helper macro used to create an id identifier. |
+| `IdentifierName<Kind, Ancestor>` | Struct            | The name part of an identifier. Same rules as `IdentifierId`. |
+| `name!["str", path...]`          | Declarative macro | Helper macro used to create a name identifier. |
+| `IdentifierNone`                 | Struct            | The dangling part of an identifier, implicitly added to the end of any ancestor path. |
+
+### Examples
+
+More usage examples can be found in the [integration tests](tests/integration).
+
+#### A basic usage example
 
 ```rust
 #[derive(DatastoreManaged, Clone, Debug)]
-#[kind = "Test"]
+#[kind = "First"]
 #[page_size = 2]
-pub struct TestEntity {
+pub struct FirstEntity {
     #[key]
-    pub key: Option<Key>,
+    pub key: IdentifierId<Self>,
 
     #[version]
     pub version: Option<i64>,
@@ -23,49 +43,83 @@ pub struct TestEntity {
     #[property = "Name"]
     pub name: String,
 }
+
+async fn read_and_commit(connection: &impl DatastoreConnection) -> Result<(), DatastorersError> {
+    let entity_instance = FirstEntity::get_one_by_name(
+        "test-name".to_string(),
+        connection
+    ).await?;
+    entity_instance.commit(connection).await?;
+    Ok(())
+}
+
+async fn create_first_and_commit(connection: &impl DatastoreConnection) -> Result<(), DatastorersError> {
+    // A new entity is added to Google Datastore if the property marked as `#[key]`
+    // has its first element set to `None`:
+    let t = FirstEntity {
+        key: id![None],
+        version: None,
+        name: "my string".to_string(),
+    };
+    t.commit(connection).await?;
+
+    Ok(())
+}
 ```
 
-Read a Datastore entity:
+#### An example with a longer entity key path
 
 ```rust
-let entity_instance = TestEntity::get_one_by_name(String::from("test-name", &connection))?;
+#[derive(DatastoreManaged)]
+#[kind = "Second"]
+pub struct SecondEntity {
+    #[key]
+    pub key: IdentifierName<Self, IdentifierId<FirstEntity>>,
+
+    pub data: String,
+}
+
+async fn create_second_and_commit(connection: &impl DatastoreConnection) -> Result<(), DatastorersError> {
+    let t = SecondEntity {
+        key: name![None, id![44444]],
+        data: "My Data".to_string(),
+    };
+
+    t.commit(connection).await?;
+    Ok(())
+}
 ```
 
-Commit changes:
+#### Transactions
+
+Datastorers supports [datastore transactions](https://cloud.google.com/datastore/docs/concepts/transactions).
+The transactions can be used to commit multiple update/create/delete modifications in one single request.
 
 ```rust
-entity_instance.commit(&connection);
-```
+async fn use_a_transaction(connection: &impl DatastoreConnection) -> Result<(), DatastorersError> {
+    let mut transaction = TransactionConnection::begin_transaction(connection).await?;
 
-More usage examples can be found in the [integration tests](tests/integration).
+    // Add an entity that shall be saved when the transaction is committed
+    let t = FirstEntity {
+        key: id![None],
+        version: None,
+        name: "my string".to_string(),
+    };
+
+    // Add one or more operations to the transaction
+    transaction.push_save(t);
+
+    // Commit the transaction
+    transaction.commit().await?;
+
+    Ok(())
+}
+```
 
 ### Datastore connection
 
 A connection to Google Datastore is created by implementing the `DatastoreConnection` trait.
 See example implementation in the [integration tests](tests/integration/connection.rs).
-
-### Macro attributes and struct properties
-
-* The struct must have a `kind` attribute, it will be used to map the struct to a kind of entity in Google Datastore.
-* The struct must have a property with the `key` attribute, this property must be of type `Option<google_datastore1::schemas::Key>`, this property will contain the Google Datastore key once the item is fetched.
-* The struct may have a property with the `version` attribute, if attribute is set the property must be of type `Option<i64>`. If the struct contains a version property it will be used when commiting changes to the entity to detect, and return error on, colliding updates of the entity.
-* A property in the struct may have the `property` attribute. If set, the `property` attribute argument will be used as the Google Datastore property name.
-* A property in the struct may have the `indexed` attribute. If set, getters will be generated for the property, if those shall work the corresponding property must be marked as indexed in Google Datastore.
-* The struct may have the `page_size` attribute. If set the value will control the maximum page size when fetching multiple entities, if not set the default page size (50) will be used.
-
-
-### Create data
-
-A new entity is added to Google Datastore if a struct with `key` `None` is committed:
-
-```rust
-let t = TestEntity {
-    key: None,
-    version: None,
-    name: String::from("my string),
-}
-t.commit(&connection)
-```
 
 ### Read data
 
@@ -74,49 +128,31 @@ The struct deriving the `DatastoreManaged` macro will always contain the `get_on
 For each property that has the indexed attribute, getters will be generated based on the property name, for the example struct above will have:
 
 ```rust
-TestEntity::get_one_by_name(value: String, connection: &impl DatastoreConnection) -> Result<TestEntity, DatastorersError>
+impl TestEntity {
+    async fn get_one_by_name(value: String, connection: &impl DatastoreConnection) -> Result<EntityName, DatastorersError> {
+        // ...
+    }
 
-TestEntity::get_by_name(value: String, connection: &impl DatastoreConnection) -> Result<ResultCollection<TestEntity>, DatastorersError>
-
+    async fn get_by_name(value: String, connection: &impl DatastoreConnection) -> Result<ResultCollection<EntityName>, DatastorersError> {
+        // ...
+    }
+}
 ```
 
 ### Modify data
 
-The struct deriving the `DatastoreManaged` macro will get methods for commiting changes and to delete the entity:
+The struct deriving the `DatastoreManaged` macro will get methods for committing changes and to delete the entity:
 
 ```rust
-TestEntity::commit(connection: &impl DatastoreConnection) -> Result<TestEntity, DatastorersError>
+impl TestEntity {
+    async fn commit(connection: &impl DatastoreConnection) -> Result<EntityName, DatastorersError> {
+        // ...
+    }
 
-TestEntity::delete(connection: &impl DatastoreConnection) -> Result<(), DatastorersError>
-
-```
-
-### Transactions
-
-Datastorers supports [datastore transactions](https://cloud.google.com/datastore/docs/concepts/transactions).
-The transactions can be used to commit multiple update/create/delete modifications in one single request.
-
-Crete a transaction:
-
-```rust
-let mut transaction = TransactionConnection::begin_transaction(&connection)?;
-```
-
-Add some entities that shall be saved when the transaction is committed:
-
-```rust
-let t = TestEntity {
-    key: None,
-    version: None,
-    name: String::from("my string),
+    async fn delete(connection: &impl DatastoreConnection) -> Result<(), DatastorersError> {
+        // ...
+    }
 }
-transaction.push_save(t)
-```
-
-Commit the transaction:
-
-```rust
-transaction.commit()?;
 ```
 
 ## Testing
