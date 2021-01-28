@@ -179,13 +179,13 @@ async fn test_get_by_id() -> Result<(), DatastorersError> {
     // Try fetch with a random id, to validate that not found check works
     let random_id = generate_random_id::<TestEntity>();
     assert_client_error(
-        TestEntity::get_one_by_id(&random_id, &connection).await,
+        TestEntity::get_one_by_id(&connection, &random_id).await,
         DatastoreClientError::NotFound,
     );
 
     // Success
     let inserted_id = &inserted.key;
-    let fetched_entity = TestEntity::get_one_by_id(inserted_id, &connection).await?;
+    let fetched_entity = TestEntity::get_one_by_id(&connection, inserted_id).await?;
 
     // Validate content of the fetched entity
     assert_eq!(&original_string, &fetched_entity.prop_string);
@@ -209,19 +209,19 @@ async fn test_get_by_property() -> Result<(), DatastorersError> {
 
     // Not found
     assert_client_error(
-        TestEntity::get_one_by_prop_string(generate_random_string(10), &connection).await,
+        TestEntity::get_one_by_prop_string(&connection, generate_random_string(10)).await,
         DatastoreClientError::NotFound,
     );
 
     // Multiple results
     assert_client_error(
-        TestEntity::get_one_by_prop_string(duplicated_entity.prop_string, &connection).await,
+        TestEntity::get_one_by_prop_string(&connection, duplicated_entity.prop_string).await,
         DatastoreClientError::AmbiguousResult,
     );
 
     // Success
     let fetched_entity =
-        match TestEntity::get_one_by_prop_string(expected_result_entity.prop_string, &connection)
+        match TestEntity::get_one_by_prop_string(&connection, expected_result_entity.prop_string)
             .await
         {
             Ok(e) => e,
@@ -250,7 +250,7 @@ async fn test_get_collection_by_property() -> Result<(), DatastorersError> {
     }
 
     // Fetch first page
-    let page = TestEntity::get_by_prop_string(common_string_prop, &connection).await?;
+    let page = TestEntity::get_by_prop_string(&connection, common_string_prop).await?;
 
     // Validate it
     assert_eq!(page.result.len(), page_size);
@@ -303,7 +303,7 @@ async fn test_update_property() -> Result<(), DatastorersError> {
 
     // Get by prop, shall be same key as created
     let mut fetched =
-        TestEntity::get_one_by_prop_string(original.prop_string.clone(), &connection).await?;
+        TestEntity::get_one_by_prop_string(&connection, original.prop_string.clone()).await?;
     assert_eq!(&inserted.key, &fetched.key);
 
     // Change the prop value and commit
@@ -314,12 +314,12 @@ async fn test_update_property() -> Result<(), DatastorersError> {
 
     // Get by old prop value => not found
     assert_client_error(
-        TestEntity::get_one_by_prop_string(original.prop_string.clone(), &connection).await,
+        TestEntity::get_one_by_prop_string(&connection, original.prop_string.clone()).await,
         DatastoreClientError::NotFound,
     );
 
     // Get by new prop value => entity shall be founfd, with the original key
-    let fetched = TestEntity::get_one_by_prop_string(new_string_prop.clone(), &connection).await?;
+    let fetched = TestEntity::get_one_by_prop_string(&connection, new_string_prop.clone()).await?;
     assert_eq!(&inserted.key, &fetched.key);
     assert_eq!(&new_string_prop, &fetched.prop_string);
 
@@ -347,17 +347,17 @@ async fn test_get_by_array_property() -> Result<(), DatastorersError> {
 
     // Fetch for string_value_a => shall return entity_a
     let fetched_entity =
-        TestEntity::get_one_by_prop_string_array(string_value_a, &connection).await?;
+        TestEntity::get_one_by_prop_string_array(&connection, string_value_a).await?;
     assert_eq!(&inserted_a.key, &fetched_entity.key);
 
     // Fetch for string_value_c => shall return entity_b
     let fetched_entity =
-        TestEntity::get_one_by_prop_string_array(string_value_c, &connection).await?;
+        TestEntity::get_one_by_prop_string_array(&connection, string_value_c).await?;
     assert_eq!(&inserted_b.key, &fetched_entity.key);
 
     // Fetch for string_value_b => shall return multiple entities => error
     assert_client_error(
-        TestEntity::get_one_by_prop_string_array(string_value_b, &connection).await,
+        TestEntity::get_one_by_prop_string_array(&connection, string_value_b).await,
         DatastoreClientError::AmbiguousResult,
     );
 
@@ -383,17 +383,17 @@ async fn test_update_array_property() -> Result<(), DatastorersError> {
 
     // Fetch for string_value_a => shall return entity
     let fetched_entity =
-        TestEntity::get_one_by_prop_string_array(string_value_a.clone(), &connection).await?;
+        TestEntity::get_one_by_prop_string_array(&connection, string_value_a.clone()).await?;
     assert_eq!(&inserted.key, &fetched_entity.key);
 
     // Fetch for string_value_b => shall return entity
     let fetched_entity =
-        TestEntity::get_one_by_prop_string_array(string_value_b.clone(), &connection).await?;
+        TestEntity::get_one_by_prop_string_array(&connection, string_value_b.clone()).await?;
     assert_eq!(&inserted.key, &fetched_entity.key);
 
     // Fetch for string_value_c => shall return error not found
     assert_client_error(
-        TestEntity::get_one_by_prop_string_array(string_value_c.clone(), &connection).await,
+        TestEntity::get_one_by_prop_string_array(&connection, string_value_c.clone()).await,
         DatastoreClientError::NotFound,
     );
 
@@ -406,18 +406,18 @@ async fn test_update_array_property() -> Result<(), DatastorersError> {
 
     // Fetch for string_value_a => shall return error not found
     assert_client_error(
-        TestEntity::get_one_by_prop_string_array(string_value_a, &connection).await,
+        TestEntity::get_one_by_prop_string_array(&connection, string_value_a).await,
         DatastoreClientError::NotFound,
     );
 
     // Fetch for string_value_b => shall return entity
     let fetched_entity =
-        TestEntity::get_one_by_prop_string_array(string_value_b, &connection).await?;
+        TestEntity::get_one_by_prop_string_array(&connection, string_value_b).await?;
     assert_eq!(&inserted_key, &fetched_entity.key);
 
     // Fetch for string_value_c => shall return entity
     let fetched_entity =
-        TestEntity::get_one_by_prop_string_array(string_value_c, &connection).await?;
+        TestEntity::get_one_by_prop_string_array(&connection, string_value_c).await?;
     assert_eq!(&inserted_key, &fetched_entity.key);
 
     Ok(())
@@ -433,10 +433,10 @@ async fn test_delete() -> Result<(), DatastorersError> {
 
     // Both shall be fetchable
     let fetched =
-        TestEntity::get_one_by_prop_string(inserted_a.prop_string.clone(), &connection).await?;
+        TestEntity::get_one_by_prop_string(&connection, inserted_a.prop_string.clone()).await?;
     assert_eq!(&inserted_a.key, &fetched.key);
     let fetched =
-        TestEntity::get_one_by_prop_string(inserted_b.prop_string.clone(), &connection).await?;
+        TestEntity::get_one_by_prop_string(&connection, inserted_b.prop_string.clone()).await?;
     assert_eq!(&inserted_b.key, &fetched.key);
 
     // Delete one
@@ -445,11 +445,11 @@ async fn test_delete() -> Result<(), DatastorersError> {
 
     // Only entity_a shall be fetchable
     let fetched =
-        TestEntity::get_one_by_prop_string(inserted_a.prop_string.clone(), &connection).await?;
+        TestEntity::get_one_by_prop_string(&connection, inserted_a.prop_string.clone()).await?;
     assert_eq!(&inserted_a.key, &fetched.key);
 
     assert_client_error(
-        TestEntity::get_one_by_prop_string(prop_string_b, &connection).await,
+        TestEntity::get_one_by_prop_string(&connection, prop_string_b).await,
         DatastoreClientError::NotFound,
     );
 
@@ -470,7 +470,7 @@ async fn test_optional_values() -> Result<(), DatastorersError> {
     inserted_empty.commit(&connection).await?;
 
     // Fetch and validate that the inserted properties are saved
-    let mut fetched_entity = TestEntityOptional::get_one_by_id(&inserted_id, &connection).await?;
+    let mut fetched_entity = TestEntityOptional::get_one_by_id(&connection, &inserted_id).await?;
     assert_eq!(&fetched_entity.prop_string, &Some(string_value.clone()));
     assert_eq!(&fetched_entity.prop_bool, &Some(true));
     assert_eq!(&fetched_entity.prop_int, &None);
@@ -478,7 +478,7 @@ async fn test_optional_values() -> Result<(), DatastorersError> {
 
     // Try fetch with the non optional type, shalll fail since not all values are set!
     assert_parse_error(
-        TestEntity::get_one_by_id(&id![inserted_id.id.unwrap()], &connection).await,
+        TestEntity::get_one_by_id(&connection, &id![inserted_id.id.unwrap()]).await,
         DatastoreParseError::NoSuchValue,
     );
     // Set the rest of the values
@@ -489,14 +489,14 @@ async fn test_optional_values() -> Result<(), DatastorersError> {
 
     // Fetch and validate result
     let fetched_entity =
-        TestEntityOptional::get_one_by_prop_string(string_value.clone(), &connection).await?;
+        TestEntityOptional::get_one_by_prop_string(&connection, string_value.clone()).await?;
     assert_eq!(&fetched_entity.prop_string, &Some(string_value.clone()));
     assert_eq!(&fetched_entity.prop_bool, &Some(true));
     assert_eq!(&fetched_entity.prop_int, &Some(int_value));
     assert_eq!(&fetched_entity.prop_string_array, &Some(vec![]));
 
     // Now shall it also be possible to fetch the entity type without optionals
-    let fetched_non_optional = TestEntity::get_one_by_prop_int(int_value, &connection).await?;
+    let fetched_non_optional = TestEntity::get_one_by_prop_int(&connection, int_value).await?;
     assert_eq!(&fetched_non_optional.prop_string, &string_value);
     assert_eq!(&fetched_non_optional.prop_bool, &true);
     assert_eq!(&fetched_non_optional.prop_int, &int_value);
@@ -515,11 +515,11 @@ async fn test_coliding_update() -> Result<(), DatastorersError> {
     let inserted_id = &inserted.key;
 
     // Go fetch it two times (and change both fetched entities)
-    let mut a = TestEntity::get_one_by_id(inserted_id, &connection).await?;
+    let mut a = TestEntity::get_one_by_id(&connection, inserted_id).await?;
     let prop_int_a = generate_random_int();
     a.prop_int = prop_int_a;
 
-    let mut b = TestEntity::get_one_by_id(inserted_id, &connection).await?;
+    let mut b = TestEntity::get_one_by_id(&connection, inserted_id).await?;
     b.prop_int = generate_random_int();
 
     // Save the first one => we expect success
@@ -532,7 +532,7 @@ async fn test_coliding_update() -> Result<(), DatastorersError> {
     );
 
     // Fetch one last time, the changes in a shall have been saved
-    let fetched = TestEntity::get_one_by_id(inserted_id, &connection).await?;
+    let fetched = TestEntity::get_one_by_id(&connection, inserted_id).await?;
     assert_eq!(prop_int_a, fetched.prop_int);
 
     Ok(())
@@ -547,11 +547,11 @@ async fn test_coliding_delete() -> Result<(), DatastorersError> {
     let inserted_id = &inserted.key;
 
     // Go fetch it two times (and change both fetched entities)
-    let mut a = TestEntity::get_one_by_id(inserted_id, &connection).await?;
+    let mut a = TestEntity::get_one_by_id(&connection, inserted_id).await?;
     let prop_int_a = generate_random_int();
     a.prop_int = prop_int_a;
 
-    let mut b = TestEntity::get_one_by_id(inserted_id, &connection).await?;
+    let mut b = TestEntity::get_one_by_id(&connection, inserted_id).await?;
     b.prop_int = generate_random_int();
 
     // Save the forst one => we expect success
@@ -564,7 +564,7 @@ async fn test_coliding_delete() -> Result<(), DatastorersError> {
     );
 
     // Fetch one last time, the changes in a shall have been saved
-    let fetched = TestEntity::get_one_by_id(inserted_id, &connection).await?;
+    let fetched = TestEntity::get_one_by_id(&connection, inserted_id).await?;
     assert_eq!(prop_int_a, fetched.prop_int);
 
     Ok(())
@@ -586,30 +586,30 @@ async fn test_transaction_with_update() -> Result<(), DatastorersError> {
     // Create a transaction, use the transaction to fetch and modify both entities
     let mut transaction = TransactionConnection::begin_transaction(&connection).await?;
 
-    let mut a = TestEntity::get_one_by_id(inserted_id_a, &transaction).await?;
+    let mut a = TestEntity::get_one_by_id(&transaction, inserted_id_a).await?;
     let prop_int_a = generate_random_int();
     a.prop_int = prop_int_a;
     transaction.push_save(a)?;
 
-    let mut b = TestEntity::get_one_by_id(inserted_id_b, &transaction).await?;
+    let mut b = TestEntity::get_one_by_id(&transaction, inserted_id_b).await?;
     let prop_int_b = generate_random_int();
     b.prop_int = prop_int_b;
     transaction.push_save(b)?;
 
     // Transaction not commited, a and b shall have their original values
-    let fetched_a = TestEntity::get_one_by_id(inserted_id_a, &connection).await?;
+    let fetched_a = TestEntity::get_one_by_id(&connection, inserted_id_a).await?;
     assert_eq!(original_prop_int_a, fetched_a.prop_int);
-    let fetched_b = TestEntity::get_one_by_id(inserted_id_b, &connection).await?;
+    let fetched_b = TestEntity::get_one_by_id(&connection, inserted_id_b).await?;
     assert_eq!(original_prop_int_b, fetched_b.prop_int);
 
     // Commit transaction
     transaction.commit().await?;
 
     // Fetch and validate that both items got updated
-    let fetched_a = TestEntity::get_one_by_id(inserted_id_a, &connection).await?;
+    let fetched_a = TestEntity::get_one_by_id(&connection, inserted_id_a).await?;
     assert_eq!(fetched_a.prop_int, prop_int_a);
 
-    let fetched_b = TestEntity::get_one_by_id(inserted_id_b, &connection).await?;
+    let fetched_b = TestEntity::get_one_by_id(&connection, inserted_id_b).await?;
     assert_eq!(fetched_b.prop_int, prop_int_b);
 
     Ok(())
@@ -625,19 +625,19 @@ async fn test_name_key() -> Result<(), DatastorersError> {
     };
 
     // Delete if it exists
-    let _ = delete_one(entity.clone().try_into()?, &connection).await;
+    let _ = delete_one(&connection, entity.clone().try_into()?).await;
 
     // Insert it
     let _ = entity.clone().commit(&connection).await?;
 
     // Fetch it
-    let fetched = TestEntityName::get_one_by_id(&name!["test"], &connection).await?;
+    let fetched = TestEntityName::get_one_by_id(&connection, &name!["test"]).await?;
 
     assert_eq!(&entity.key, &fetched.key);
     assert_eq!(&entity.prop_string, &fetched.prop_string);
 
     // Delete it again
-    let _ = delete_one(entity.clone().try_into()?, &connection).await?;
+    let _ = delete_one(&connection, entity.clone().try_into()?).await?;
 
     Ok(())
 }

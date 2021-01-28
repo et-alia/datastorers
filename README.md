@@ -2,6 +2,24 @@
 
 Type safe Google Datastore access in Rust!
 
+## Getting started
+
+Currently Datastorers is only available as a git dependency.
+
+Put this in your `Cargo.toml` if you are feeling adventurous:
+
+```toml
+[dependencies]
+datastorers = { git = "https://github.com/et-alia/datastorers", branch = "master" }
+```
+
+If you are feeling less adventurous, use a specific commit:
+
+```toml
+[dependencies]
+datastorers = { git = "https://github.com/et-alia/datastorers", rev = "<Pick your favorite SHA>" }
+```
+
 ## Usage
 
 These are the major parts of the datastorers API surface:
@@ -46,8 +64,8 @@ pub struct FirstEntity {
 
 async fn read_and_commit(connection: &impl DatastoreConnection) -> Result<(), DatastorersError> {
     let entity_instance = FirstEntity::get_one_by_name(
+        connection,
         "test-name".to_string(),
-        connection
     ).await?;
     entity_instance.commit(connection).await?;
     Ok(())
@@ -129,11 +147,11 @@ For each property that has the indexed attribute, getters will be generated base
 
 ```rust
 impl TestEntity {
-    async fn get_one_by_name(value: String, connection: &impl DatastoreConnection) -> Result<EntityName, DatastorersError> {
+    async fn get_one_by_name(connection: &impl DatastoreConnection, value: String) -> Result<EntityName, DatastorersError> {
         // ...
     }
 
-    async fn get_by_name(value: String, connection: &impl DatastoreConnection) -> Result<ResultCollection<EntityName>, DatastorersError> {
+    async fn get_by_name(connection: &impl DatastoreConnection, value: String) -> Result<ResultCollection<EntityName>, DatastorersError> {
         // ...
     }
 }

@@ -239,20 +239,19 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #self_key_field_expr
             }
 
-            // TODO: Take connection first?
-            pub async fn get_one_by_id(key_path: &#key_field_type, connection: &impl datastorers::DatastoreConnection) -> Result<#name, datastorers::DatastorersError>
+            pub async fn get_one_by_id(connection: &impl datastorers::DatastoreConnection, key_path: &#key_field_type) -> Result<#name, datastorers::DatastorersError>
             {
                 use std::convert::TryInto;
-                let datastore_entity = datastorers::get_one_by_id(key_path, connection).await?;
+                let datastore_entity = datastorers::get_one_by_id(connection, key_path).await?;
                 let result: #name = datastore_entity
                     .try_into()?;
                 return Ok(result)
             }
             #(
-                pub async fn #entity_getters(value: impl datastorers::serialize::Serialize, connection: &impl datastorers::DatastoreConnection) -> Result<#name, datastorers::DatastorersError>
+                pub async fn #entity_getters(connection: &impl datastorers::DatastoreConnection, value: impl datastorers::serialize::Serialize) -> Result<#name, datastorers::DatastorersError>
                 {
                     use std::convert::TryInto;
-                    let datastore_entity = datastorers::get_one_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), connection).await?;
+                    let datastore_entity = datastorers::get_one_by_property(connection, #ds_property_names.to_string(), value, #kind_str.to_string()).await?;
                     let result: #name = datastore_entity
                         .try_into()?;
                     return Ok(result)
@@ -260,10 +259,10 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             )*
 
             #(
-                pub async fn #entity_collection_getters(value: impl datastorers::serialize::Serialize, connection: &impl datastorers::DatastoreConnection) -> Result<datastorers::ResultCollection<#name>, datastorers::DatastorersError>
+                pub async fn #entity_collection_getters(connection: &impl datastorers::DatastoreConnection, value: impl datastorers::serialize::Serialize) -> Result<datastorers::ResultCollection<#name>, datastorers::DatastorersError>
                 {
                     use std::convert::TryInto;
-                    let entities = datastorers::get_by_property(#ds_property_names.to_string(), value, #kind_str.to_string(), #page_size, connection).await?;
+                    let entities = datastorers::get_by_property(connection, #ds_property_names.to_string(), value, #kind_str.to_string(), #page_size).await?;
                     let result: datastorers::ResultCollection<#name> = entities
                         .try_into()?;
                     return Ok(result)
@@ -274,8 +273,8 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             {
                 use std::convert::TryInto;
                 let result_entity = datastorers::commit_one(
+                    connection,
                     self.try_into()?,
-                    connection
                 ).await?;
                 let result: #name = result_entity
                     .try_into()?;
@@ -285,7 +284,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             pub async fn delete(self, connection: &impl datastorers::DatastoreConnection) -> Result<(), datastorers::DatastorersError>
             {
                 use std::convert::TryInto;
-                datastorers::delete_one(self.try_into()?, connection).await
+                datastorers::delete_one(connection, self.try_into()?).await
             }
         }
 

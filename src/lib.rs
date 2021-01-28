@@ -1,13 +1,7 @@
 #![allow(clippy::single_match)]
 
-pub mod bytes;
-pub mod connection;
-pub mod deserialize;
-mod entity;
-pub mod error;
-mod identifier;
-pub mod serialize;
-pub mod transaction;
+use std::convert::TryFrom;
+use std::convert::TryInto;
 
 pub use crate::connection::DatastoreConnection;
 pub use crate::entity::{
@@ -15,10 +9,11 @@ pub use crate::entity::{
     ResultCollection,
 };
 pub use crate::error::*;
+pub use crate::identifier::*;
 
 pub use datastore_entity_derives::DatastoreManaged;
 
-pub use identifier::*;
+use crate::serialize::Serialize;
 
 use google_datastore1::schemas::{
     BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
@@ -27,9 +22,14 @@ use google_datastore1::schemas::{
     ReadOptions, RunQueryRequest, RunQueryResponse,
 };
 
-use crate::serialize::Serialize;
-use std::convert::TryFrom;
-use std::convert::TryInto;
+pub mod bytes;
+pub mod connection;
+pub mod deserialize;
+mod entity;
+pub mod error;
+mod identifier;
+pub mod serialize;
+pub mod transaction;
 
 const DEFAULT_PAGE_SIZE: i32 = 50;
 
@@ -44,8 +44,8 @@ pub trait Kind {
 }
 
 pub async fn get_one_by_id(
-    key_path: &impl KeyPath,
     connection: &impl DatastoreConnection,
+    key_path: &impl KeyPath,
 ) -> Result<DatastoreEntity, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
@@ -104,10 +104,10 @@ fn build_query_from_property(
 }
 
 pub async fn get_one_by_property(
+    connection: &impl DatastoreConnection,
     property_name: String,
     property_value: impl Serialize,
     kind: String,
-    connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntity, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
@@ -157,8 +157,8 @@ pub async fn get_one_by_property(
 }
 
 async fn get_page(
-    query: Query,
     connection: &impl DatastoreConnection,
+    query: Query,
 ) -> Result<DatastoreEntityCollection, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
@@ -203,11 +203,11 @@ async fn get_page(
 }
 
 pub async fn get_by_property(
+    connection: &impl DatastoreConnection,
     property_name: String,
     property_value: impl Serialize,
     kind: String,
     limit: Option<i32>,
-    connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntityCollection, DatastorersError> {
     let query = build_query_from_property(
         property_name,
@@ -215,7 +215,7 @@ pub async fn get_by_property(
         kind,
         limit.unwrap_or(DEFAULT_PAGE_SIZE),
     )?;
-    get_page(query, connection).await
+    get_page(connection, query).await
 }
 
 impl<T> ResultCollection<T>
@@ -233,15 +233,15 @@ where
         let end_cursor = self.end_cursor.ok_or(DatastoreClientError::ApiDataError)?;
         query.start_cursor = Some(end_cursor);
 
-        let page: DatastoreEntityCollection = get_page(query, connection).await?;
+        let page: DatastoreEntityCollection = get_page(connection, query).await?;
         let res: ResultCollection<T> = page.try_into()?;
         return Ok(res);
     }
 }
 
 async fn commit(
-    mutations: Vec<Mutation>,
     connection: &impl DatastoreConnection,
+    mutations: Vec<Mutation>,
 ) -> Result<CommitResponse, google_datastore1::Error> {
     let client = connection.get_client();
     let projects = client.projects();
@@ -294,8 +294,8 @@ fn parse_mutation_result(result: &MutationResult) -> Result<Option<Key>, Datasto
 }
 
 pub async fn commit_one(
-    entity: DatastoreEntity,
     connection: &impl DatastoreConnection,
+    entity: DatastoreEntity,
 ) -> Result<DatastoreEntity, DatastorersError> {
     let expects_key = expects_key_after_commit(&entity.key())?;
     let base_version = entity.version();
@@ -307,7 +307,7 @@ pub async fn commit_one(
         base_version,
         ..Default::default()
     };
-    let cre: CommitResponse = commit(vec![mutation], connection).await?;
+    let cre: CommitResponse = commit(connection, vec![mutation]).await?;
 
     // The commit result shall contain a key that we can assign to the entity in order to later
     // be able to update it
@@ -335,8 +335,8 @@ pub async fn commit_one(
 }
 
 pub async fn delete_one(
-    entity: DatastoreEntity,
     connection: &impl DatastoreConnection,
+    entity: DatastoreEntity,
 ) -> Result<(), DatastorersError> {
     let key = entity.key().ok_or(DatastoreClientError::NotFound)?; // No key to delete
 
@@ -345,7 +345,7 @@ pub async fn delete_one(
         base_version: entity.version(),
         ..Default::default()
     };
-    let cre: CommitResponse = commit(vec![mutation], connection).await?;
+    let cre: CommitResponse = commit(connection, vec![mutation]).await?;
 
     // Assert that we have a commit result
     if let Some(results) = &cre.mutation_results {
