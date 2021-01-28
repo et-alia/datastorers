@@ -3,12 +3,13 @@ use rand::{thread_rng, Rng};
 
 use datastorers::transaction::TransactionConnection;
 use datastorers::{
-    DatastoreClientError, DatastoreManaged, DatastoreParseError, DatastorersError, IdentifierId,
-    IdentifierNone, Kind,
+    delete_one, id, name, DatastoreClientError, DatastoreManaged, DatastoreParseError,
+    DatastorersError, IdentifierId, IdentifierName, IdentifierNone, Kind,
 };
 
 use crate::connection::create_test_connection;
 
+use std::convert::TryInto;
 mod connection;
 
 #[derive(DatastoreManaged, Clone, Debug)]
@@ -56,6 +57,15 @@ pub struct TestEntityOptional {
 
     #[property = "str_array_property"]
     pub prop_string_array: Option<Vec<String>>,
+}
+
+#[derive(DatastoreManaged, Clone, Debug)]
+#[kind = "TestNameKey"]
+pub struct TestEntityName {
+    #[key]
+    pub key: IdentifierName<Self>,
+
+    pub prop_string: String,
 }
 
 impl Default for TestEntityOptional {
@@ -468,7 +478,7 @@ async fn test_optional_values() -> Result<(), DatastorersError> {
 
     // Try fetch with the non optional type, shalll fail since not all values are set!
     assert_parse_error(
-        TestEntity::get_one_by_id(&inserted_id, &connection).await,
+        TestEntity::get_one_by_id(&id![inserted_id.id.unwrap()], &connection).await,
         DatastoreParseError::NoSuchValue,
     );
     // Set the rest of the values
@@ -512,7 +522,7 @@ async fn test_coliding_update() -> Result<(), DatastorersError> {
     let mut b = TestEntity::get_one_by_id(inserted_id, &connection).await?;
     b.prop_int = generate_random_int();
 
-    // Save the forst one => we expect success
+    // Save the first one => we expect success
     a.commit(&connection).await?;
 
     // Save the second one => we expect error (collision)
@@ -601,6 +611,33 @@ async fn test_transaction_with_update() -> Result<(), DatastorersError> {
 
     let fetched_b = TestEntity::get_one_by_id(inserted_id_b, &connection).await?;
     assert_eq!(fetched_b.prop_int, prop_int_b);
+
+    Ok(())
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_name_key() -> Result<(), DatastorersError> {
+    let connection = create_test_connection().await;
+    let entity = TestEntityName {
+        key: name!["test"],
+        prop_string: "String".to_string(),
+    };
+
+    // Delete if it exists
+    let _ = delete_one(entity.clone().try_into()?, &connection).await;
+
+    // Insert it
+    let _ = entity.clone().commit(&connection).await?;
+
+    // Fetch it
+    let fetched = TestEntityName::get_one_by_id(&name!["test"], &connection).await?;
+
+    assert_eq!(&entity.key, &fetched.key);
+    assert_eq!(&entity.prop_string, &fetched.prop_string);
+
+    // Delete it again
+    let _ = delete_one(entity.clone().try_into()?, &connection).await?;
 
     Ok(())
 }

@@ -265,12 +265,17 @@ async fn commit(
     commit_request.execute().await
 }
 
-fn key_has_id(key: &Option<Key>) -> Result<bool, DatastoreClientError> {
+fn expects_key_after_commit(key: &Option<Key>) -> Result<bool, DatastoreClientError> {
     match key {
         Some(k) => {
             if let Some(path) = &k.path {
                 if !path.is_empty() {
-                    return Ok(path[0].id.is_some());
+                    let first_path_element = &path[0];
+                    return if first_path_element.name.is_some() || first_path_element.id.is_some() {
+                        Ok(false)
+                    } else {
+                        Ok(true)
+                    };
                 }
             }
             Ok(false)
@@ -292,7 +297,7 @@ pub async fn commit_one(
     entity: DatastoreEntity,
     connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntity, DatastorersError> {
-    let is_insert = !key_has_id(&entity.key())?;
+    let expects_key = expects_key_after_commit(&entity.key())?;
     let base_version = entity.version();
     let mut result_entity = entity.clone();
     let ent: Entity = entity.try_into()?;
@@ -310,8 +315,10 @@ pub async fn commit_one(
         match results.len() {
             0 => return Err(DatastoreClientError::KeyAssignmentFailed.into()),
             1 => {
+                // parse_mutation_result has a side effect - it checks if there are conflicts!
+                // that's why it can't be moved into the if statement
                 let assigned_key = parse_mutation_result(&results[0])?;
-                if is_insert {
+                if expects_key {
                     if let Some(key) = assigned_key {
                         result_entity.set_key(Some(key));
                     } else {

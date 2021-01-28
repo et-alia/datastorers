@@ -239,7 +239,8 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #self_key_field_expr
             }
 
-            pub async fn get_one_by_id(key_path: &impl datastorers::KeyPath, connection: &impl datastorers::DatastoreConnection) -> Result<#name, datastorers::DatastorersError>
+            // TODO: Take connection first?
+            pub async fn get_one_by_id(key_path: &#key_field_type, connection: &impl datastorers::DatastoreConnection) -> Result<#name, datastorers::DatastorersError>
             {
                 use std::convert::TryInto;
                 let datastore_entity = datastorers::get_one_by_id(key_path, connection).await?;
