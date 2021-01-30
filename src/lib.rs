@@ -2,6 +2,7 @@
 
 use std::convert::TryFrom;
 use std::convert::TryInto;
+use std::marker::PhantomData;
 
 pub use crate::connection::DatastoreConnection;
 pub use crate::entity::{
@@ -19,7 +20,7 @@ use google_datastore1::schemas::{
     BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
     Filter, Key, KindExpression, LookupRequest, LookupResponse, Mutation, MutationResult,
     PropertyFilter, PropertyFilterOp, PropertyReference, Query, QueryResultBatchMoreResults,
-    ReadOptions, RunQueryRequest, RunQueryResponse,
+    ReadOptions, RunQueryRequest, RunQueryResponse, Value
 };
 
 pub mod bytes;
@@ -109,15 +110,36 @@ pub async fn get_one_by_property(
     property_value: impl Serialize,
     kind: String,
 ) -> Result<DatastoreEntity, DatastorersError> {
+    let property_filter = PropertyFilter {
+        property: Some(PropertyReference {
+            name: Some(property_name),
+        }),
+        value: property_value.serialize()?.map(|v| v.0),
+        op: Some(PropertyFilterOp::Equal),
+    };
+    query_one(property_filter, kind, connection).await
+}
+
+pub async fn query_one(
+    filter: PropertyFilter,
+    kind: String,
+    connection: &impl DatastoreConnection,
+) -> Result<DatastoreEntity, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
+
+    let filter = Filter {
+        property_filter: Some(filter),
+        ..Default::default()
+    };
+    let query = Query {
+        kind: Some(vec![KindExpression { name: Some(kind) }]),
+        filter: Some(filter),
+        limit: Some(1),
+        ..Default::default()
+    };
     let req = RunQueryRequest {
-        query: Some(build_query_from_property(
-            property_name,
-            property_value,
-            kind,
-            1,
-        )?),
+        query: Some(query),
         read_options: Some(ReadOptions {
             transaction: connection.get_transaction_id(),
             read_consistency: None,
@@ -357,4 +379,75 @@ pub async fn delete_one(
     } else {
         Err(DatastoreClientError::DeleteFailed.into())
     }
+}
+
+
+
+// TODO - split to other file
+
+#[derive(Clone, Copy)]
+pub enum Operator {
+    Eq,
+}
+
+impl From<Operator> for PropertyFilterOp {
+    fn from(item: Operator) -> Self {
+        PropertyFilterOp::Equal // TODO - implement them all
+    }
+}
+
+
+pub trait QueryProperty {
+
+    fn get_property_name(&self) -> &'static str;
+
+    fn get_operator(&self) -> Operator;
+
+    fn get_value(self) -> Value;
+}
+
+pub struct DatastorersQuery<E, P> {
+    entity: PhantomData<E>,
+    props: PhantomData<P>,
+
+    filter: Option<PropertyFilter>,
+}
+
+impl<E, P> Default for DatastorersQuery<E, P> {
+    fn default() -> Self {
+        DatastorersQuery {
+            entity: PhantomData,
+            props: PhantomData,
+            filter: None,
+        }
+    }
+}
+
+impl<E, P> DatastorersQuery<E, P> 
+where
+    P: QueryProperty,
+    E: Kind + TryFrom<DatastoreEntity, Error = DatastorersError>
+{
+
+  pub fn filter_by(mut self, filter_prop: P) -> DatastorersQuery<E, P> {
+    let operator = filter_prop.get_operator().into();
+    self.filter = Some(PropertyFilter {
+      property: Some(PropertyReference {
+          name: Some(String::from(filter_prop.get_property_name())),
+      }),
+      value: Some(filter_prop.get_value()),
+      op: Some(operator),
+    });
+    self
+  }
+
+  pub async fn query_one(self, connection: &impl DatastoreConnection) -> Result<E, DatastorersError> {
+    let query_result = query_one(
+        self.filter.unwrap(), // TODO!
+        String::from(E::kind_str()),
+        connection,
+    ).await?;
+    let entity: E = query_result.try_into()?;
+    Ok(entity)
+  }
 }
