@@ -234,6 +234,13 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #kind_str
             }
         }
+
+        impl datastorers::Pagable for #name {
+            fn page_size() -> Option<i32> {
+                #page_size
+            }
+        }
+
         impl #name {
             pub fn id(&self) -> &#key_field_type {
                 #self_key_field_expr

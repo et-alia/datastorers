@@ -14,13 +14,14 @@ pub use crate::identifier::*;
 
 pub use datastore_entity_derives::DatastoreManaged;
 
-use crate::serialize::Serialize;
+use crate::serialize::{Serialize, DatastoreSerializeError};
 
 use google_datastore1::schemas::{
     BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
     Filter, Key, KindExpression, LookupRequest, LookupResponse, Mutation, MutationResult,
     PropertyFilter, PropertyFilterOp, PropertyReference, Query, QueryResultBatchMoreResults,
-    ReadOptions, RunQueryRequest, RunQueryResponse, Value
+    ReadOptions, RunQueryRequest, RunQueryResponse, CompositeFilterOp, CompositeFilter,
+    PropertyOrder, PropertyOrderDirection
 };
 
 pub mod bytes;
@@ -42,6 +43,11 @@ pub trait Kind {
     /// Get the Entity's kind
     /// See [kind](Kind::kind) for an instance trait method that returns the same value
     fn kind_str() -> &'static str;
+}
+
+pub trait Pagable {
+    // Get page size for kind, if one is present
+    fn page_size() -> Option<i32>;
 }
 
 pub async fn get_one_by_id(
@@ -117,24 +123,24 @@ pub async fn get_one_by_property(
         value: property_value.serialize()?.map(|v| v.0),
         op: Some(PropertyFilterOp::Equal),
     };
-    query_one(property_filter, kind, connection).await
+    let filter = Filter {
+        property_filter: Some(property_filter),
+        ..Default::default()
+    };
+    query_one(Some(filter), kind, connection).await
 }
 
 pub async fn query_one(
-    filter: PropertyFilter,
+    filter: Option<Filter>,
     kind: String,
     connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntity, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
 
-    let filter = Filter {
-        property_filter: Some(filter),
-        ..Default::default()
-    };
     let query = Query {
         kind: Some(vec![KindExpression { name: Some(kind) }]),
-        filter: Some(filter),
+        filter: filter,
         limit: Some(1),
         ..Default::default()
     };
@@ -382,72 +388,249 @@ pub async fn delete_one(
 }
 
 
+pub trait DatastorersQueryable<E> {
 
-// TODO - split to other file
+    fn query() -> DatastorersQuery<E>;
+
+    fn get_default_page_size() -> Option<i32>;
+}
 
 #[derive(Clone, Copy)]
 pub enum Operator {
-    Eq,
+    Equal,
+    GreaterThan,
+    GreaterThanOrEqual,
+    LessThan,
+    LessThanOrEqual,
 }
 
 impl From<Operator> for PropertyFilterOp {
     fn from(item: Operator) -> Self {
-        PropertyFilterOp::Equal // TODO - implement them all
-    }
-}
-
-
-pub trait QueryProperty {
-
-    fn get_property_name(&self) -> &'static str;
-
-    fn get_operator(&self) -> Operator;
-
-    fn get_value(self) -> Value;
-}
-
-pub struct DatastorersQuery<E, P> {
-    entity: PhantomData<E>,
-    props: PhantomData<P>,
-
-    filter: Option<PropertyFilter>,
-}
-
-impl<E, P> Default for DatastorersQuery<E, P> {
-    fn default() -> Self {
-        DatastorersQuery {
-            entity: PhantomData,
-            props: PhantomData,
-            filter: None,
+        match item {
+            Operator::Equal => PropertyFilterOp::Equal,
+            Operator::GreaterThan => PropertyFilterOp::GreaterThan,
+            Operator::GreaterThanOrEqual => PropertyFilterOp::GreaterThanOrEqual,
+            Operator::LessThan => PropertyFilterOp::LessThan,
+            Operator::LessThanOrEqual => PropertyFilterOp::LessThanOrEqual,
         }
     }
 }
 
-impl<E, P> DatastorersQuery<E, P> 
+pub enum Order {
+    Ascending,
+    Descending,
+}
+
+impl From<Order> for PropertyOrderDirection {
+    fn from(item: Order) -> Self {
+        match item {
+            Order::Ascending => PropertyOrderDirection::Ascending,
+            Order::Descending => PropertyOrderDirection::Descending,
+        }
+    }
+}
+
+pub struct DatastorersPropertyFilterItem {
+    pub value: DatastoreValue,
+    pub operator: Operator,
+    pub property: String,
+}
+
+impl From<DatastorersPropertyFilterItem> for Filter {
+    fn from(filter_item: DatastorersPropertyFilterItem) -> Self {
+        let operator = filter_item.operator.into();
+        let filter = PropertyFilter {
+            property: Some(PropertyReference {
+                name: Some(String::from(filter_item.property)),
+            }),
+            value: Some(filter_item.value.into()),
+            op: Some(operator),
+        };
+        Filter {
+            property_filter: Some(filter),
+            composite_filter: None,
+        }
+    }
+}
+
+pub struct DatastorersPropertyFilter {
+    pub filter_items: Vec<DatastorersPropertyFilterItem>,
+}
+
+impl Default for DatastorersPropertyFilter {
+    fn default() -> Self {
+        DatastorersPropertyFilter {
+            filter_items: Vec::new(),
+        }
+    }
+}
+
+impl DatastorersPropertyFilter {
+
+    pub fn push(&mut self, filter_prop: String, operator: Operator, value: DatastoreValue) {
+        self.filter_items.push(DatastorersPropertyFilterItem {
+            value,
+            operator,
+            property: filter_prop
+        });
+    }
+}
+
+impl TryFrom<DatastorersPropertyFilter> for Filter {
+    type Error = DatastorersError;
+
+    fn try_from(mut val: DatastorersPropertyFilter) -> Result<Self, Self::Error> {
+        match val.filter_items.len() {
+            0 => Err(DatastoreClientError::NoFilterProps)?,
+            1 => {
+                let filter_item = val.filter_items.remove(0);
+                Ok(filter_item.into())
+            },
+            _ => {
+                let composite_filter = CompositeFilter {
+                    op: Some(CompositeFilterOp::And), // Only allowed value
+                    filters: Some(val.filter_items
+                        .into_iter()
+                        .map(|filter_item| filter_item.into())
+                        .collect()
+                    ),
+                };
+                Ok(Filter {
+                    property_filter: None,
+                    composite_filter: Some(composite_filter),
+                })
+            }
+        }        
+    }
+}
+
+pub struct DatastorersQuery<E> {
+
+    entity: PhantomData<E>,
+    filter: Option<DatastorersPropertyFilter>,
+    limit: Option<i32>,
+    order: Vec<PropertyOrder>,
+}
+
+
+impl<E> Default for DatastorersQuery<E> {
+
+    fn default() -> Self {
+        DatastorersQuery {
+            entity: PhantomData,
+            filter: None,
+            limit: None,
+            order: Vec::new(),
+        }
+    }
+}
+
+impl<E> DatastorersQuery<E>
 where
-    P: QueryProperty,
-    E: Kind + TryFrom<DatastoreEntity, Error = DatastorersError>
+    E: Kind + Pagable + DatastorersQueryable<E> + TryFrom<DatastoreEntity, Error = DatastorersError>
 {
 
-  pub fn filter_by(mut self, filter_prop: P) -> DatastorersQuery<E, P> {
-    let operator = filter_prop.get_operator().into();
-    self.filter = Some(PropertyFilter {
-      property: Some(PropertyReference {
-          name: Some(String::from(filter_prop.get_property_name())),
-      }),
-      value: Some(filter_prop.get_value()),
-      op: Some(operator),
-    });
+  pub fn filter(mut self, property_name: String, operator: Operator, value: impl Serialize) -> Result<DatastorersQuery<E>, DatastorersError>  {
+    let ds_value = value.serialize()?.ok_or_else(|| DatastoreSerializeError::NoValueError)?;
+    match self.filter {
+        Some(ref mut filter) => {
+            filter.push(property_name, operator, ds_value);
+        },
+        None => {
+            let mut filter = DatastorersPropertyFilter::default();
+            filter.push(property_name, operator, ds_value);
+            self.filter = Some(filter);
+        },
+    };
+    
+    Ok(self)
+  }
+
+  pub fn limit(mut self, limit: i32) -> DatastorersQuery<E> {
+    self.limit = Some(limit);
+
     self
   }
 
-  pub async fn query_one(self, connection: &impl DatastoreConnection) -> Result<E, DatastorersError> {
+  pub fn order_by(mut self, property_name: String, order: Order) -> DatastorersQuery<E> {
+    self.order.push(PropertyOrder {
+        property: Some(PropertyReference {
+            name: Some(property_name),
+        }),
+        direction: Some(order.into())
+    });
+
+    self
+  }
+
+  pub async fn by_id(self, connection: &impl DatastoreConnection, key_path: &impl KeyPath) -> Result<E, DatastorersError> {
+    let query_result = get_one_by_id(
+        connection,
+        key_path,
+    ).await?;
+    let entity: E = query_result.try_into()?;
+    Ok(entity)
+  }
+
+
+  pub async fn fetch_one(self, connection: &impl DatastoreConnection) -> Result<E, DatastorersError> {
+    let filter = match self.filter {
+        None => Ok(None),
+        Some(prop_filter) => prop_filter.try_into().map(|f| Some(f)),
+    }?;
+
     let query_result = query_one(
-        self.filter.unwrap(), // TODO!
+        filter,
         String::from(E::kind_str()),
         connection,
     ).await?;
     let entity: E = query_result.try_into()?;
     Ok(entity)
   }
+
+  pub async fn fetch(self, connection: &impl DatastoreConnection) -> Result<ResultCollection<E>, DatastorersError> {
+    let query = self.try_into()?;
+    let page = get_page(connection, query).await?;
+    let result = page.try_into()?;
+
+    Ok(result)
+  }
+}
+
+impl<E> TryFrom<DatastorersQuery<E>> for Query 
+where
+    E: Kind + DatastorersQueryable<E>
+{
+    type Error = DatastorersError;
+
+    fn try_from(item: DatastorersQuery<E>) -> Result<Self, Self::Error> {
+        let filter = match item.filter {
+            None => Ok(None),
+            Some(prop_filter) => prop_filter.try_into().map(|f| Some(f)),
+        }?;
+        let order = match item.order.len() {
+            0 => None,
+            _ => Some(item.order),
+        };
+        Ok(Query {
+            kind: Some(vec![KindExpression { name: Some(String::from(E::kind_str())) }]),
+            filter: filter,
+            limit: item.limit.or_else(|| E::get_default_page_size().or_else(|| Some(DEFAULT_PAGE_SIZE))),
+            order,
+            ..Default::default()
+        })
+    }
+}
+
+impl <T> DatastorersQueryable<T> for T
+    where T: Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError> 
+{
+
+    fn query() -> DatastorersQuery<T> {
+        DatastorersQuery::default()
+    }
+
+    fn get_default_page_size() -> Option<i32> {
+        T::page_size()
+    }
 }
