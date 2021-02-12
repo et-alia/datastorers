@@ -19,7 +19,13 @@ use google_datastore1::schemas::{
 
 const DEFAULT_PAGE_SIZE: i32 = 50;
 
-pub trait DatastorersQueryable<E> {
+pub trait DatastorersQueryable<E>
+where
+    E: Kind
+        + Pagable
+        + DatastorersQueryable<E>
+        + TryFrom<DatastoreEntity, Error = DatastorersError>,
+{
     fn query() -> DatastorersQuery<E>;
 
     fn get_default_page_size() -> Option<i32>;
@@ -38,14 +44,26 @@ where
     }
 }
 
-pub struct DatastorersQuery<E> {
+pub struct DatastorersQuery<E>
+where
+    E: Kind
+        + Pagable
+        + DatastorersQueryable<E>
+        + TryFrom<DatastoreEntity, Error = DatastorersError>,
+{
     entity: PhantomData<E>,
     filter: Option<DatastorersPropertyFilter>,
     limit: Option<i32>,
     order: Vec<PropertyOrder>,
 }
 
-impl<E> Default for DatastorersQuery<E> {
+impl<E> Default for DatastorersQuery<E>
+where
+    E: Kind
+        + Pagable
+        + DatastorersQueryable<E>
+        + TryFrom<DatastoreEntity, Error = DatastorersError>,
+{
     fn default() -> Self {
         DatastorersQuery {
             entity: PhantomData,
@@ -141,7 +159,10 @@ where
 
 impl<E> TryFrom<DatastorersQuery<E>> for Query
 where
-    E: Kind + DatastorersQueryable<E>,
+    E: Kind
+        + Pagable
+        + DatastorersQueryable<E>
+        + TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
     type Error = DatastorersError;
 
@@ -410,7 +431,6 @@ async fn get_page(
         None => Err(DatastoreClientError::NotFound.into()),
     }
 }
-
 
 impl<T> ResultCollection<T>
 where
