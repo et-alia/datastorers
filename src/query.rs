@@ -89,7 +89,7 @@ where
     ) -> Result<DatastorersQuery<E>, DatastorersError> {
         let ds_value = value
             .serialize()?
-            .ok_or_else(|| DatastoreSerializeError::NoValueError)?;
+            .ok_or(DatastoreSerializeError::NoValueError)?;
         match self.filter {
             Some(ref mut filter) => {
                 filter.push(property_name, operator, ds_value);
@@ -137,7 +137,7 @@ where
     ) -> Result<E, DatastorersError> {
         let filter = match self.filter {
             None => Ok(None),
-            Some(prop_filter) => prop_filter.try_into().map(|f| Some(f)),
+            Some(prop_filter) => prop_filter.try_into().map(Some),
         }?;
 
         let query_result = query_one(filter, String::from(E::kind_str()), connection).await?;
@@ -169,7 +169,7 @@ where
     fn try_from(item: DatastorersQuery<E>) -> Result<Self, Self::Error> {
         let filter = match item.filter {
             None => Ok(None),
-            Some(prop_filter) => prop_filter.try_into().map(|f| Some(f)),
+            Some(prop_filter) => prop_filter.try_into().map(Some),
         }?;
         let order = match item.order.len() {
             0 => None,
@@ -179,10 +179,10 @@ where
             kind: Some(vec![KindExpression {
                 name: Some(String::from(E::kind_str())),
             }]),
-            filter: filter,
+            filter,
             limit: item
                 .limit
-                .or_else(|| E::get_default_page_size().or_else(|| Some(DEFAULT_PAGE_SIZE))),
+                .or_else(|| E::get_default_page_size().or(Some(DEFAULT_PAGE_SIZE))),
             order,
             ..Default::default()
         })
@@ -235,7 +235,7 @@ impl From<DatastorersPropertyFilterItem> for Filter {
         let operator = filter_item.operator.into();
         let filter = PropertyFilter {
             property: Some(PropertyReference {
-                name: Some(String::from(filter_item.property)),
+                name: Some(filter_item.property),
             }),
             value: Some(filter_item.value.into()),
             op: Some(operator),
@@ -274,7 +274,7 @@ impl TryFrom<DatastorersPropertyFilter> for Filter {
 
     fn try_from(mut val: DatastorersPropertyFilter) -> Result<Self, Self::Error> {
         match val.filter_items.len() {
-            0 => Err(DatastoreClientError::NoFilterProps)?,
+            0 => Err(DatastoreClientError::NoFilterProps.into()),
             1 => {
                 let filter_item = val.filter_items.remove(0);
                 Ok(filter_item.into())
@@ -342,7 +342,7 @@ async fn query_one(
 
     let query = Query {
         kind: Some(vec![KindExpression { name: Some(kind) }]),
-        filter: filter,
+        filter,
         limit: Some(1),
         ..Default::default()
     };

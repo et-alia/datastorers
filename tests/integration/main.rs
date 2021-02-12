@@ -749,7 +749,7 @@ async fn test_query_by_props_not_equal() -> Result<(), DatastorersError> {
     // to be able to test queries with multiple conditions
     duplicated_entity.prop_int = generate_random_int();
     let duplicated_one = duplicated_entity.clone().commit(&connection).await?;
-    duplicated_entity.prop_int = duplicated_entity.prop_int + 1;
+    duplicated_entity.prop_int += 1;
     let duplicated_two = duplicated_entity.clone().commit(&connection).await?;
 
     let mut fetched_entity = TestEntity::query()
@@ -887,26 +887,26 @@ async fn test_query_with_order() -> Result<(), DatastorersError> {
     // Insert four entities that can be used for various tests of result ordering
     let prop_int_a = base_int_prop + 10;
     let mut prop_string_a = base_string_prop.clone();
-    prop_string_a.push_str("A");
+    prop_string_a.push('A');
     generate_entity_with_values(prop_string_a, prop_int_a)
         .commit(&connection)
         .await?;
     let prop_int_b = base_int_prop - 10;
     let mut prop_string_b = base_string_prop.clone();
-    prop_string_b.push_str("A");
+    prop_string_b.push('A');
     generate_entity_with_values(prop_string_b, prop_int_b)
         .commit(&connection)
         .await?;
     let prop_int_c = base_int_prop + 20;
     let mut prop_string_c = base_string_prop.clone();
-    prop_string_c.push_str("C");
+    prop_string_c.push('C');
     generate_entity_with_values(prop_string_c, prop_int_c)
         .commit(&connection)
         .await?;
 
     // Fetch all ordered by prop_string descending and prop_int descending
     let mut max_string_prop = base_string_prop.clone();
-    max_string_prop.push_str("D");
+    max_string_prop.push('D');
 
     let mut fetched_int_props: Vec<i64> = TestEntity::query()
         .limit(result_size)
