@@ -277,7 +277,7 @@ impl TryFrom<DatastorersPropertyFilter> for Filter {
     }
 }
 
-pub async fn get_one_by_id(
+async fn get_one_by_id(
     connection: &impl DatastoreConnection,
     key_path: &impl KeyPath,
 ) -> Result<DatastoreEntity, DatastorersError> {
@@ -311,53 +311,7 @@ pub async fn get_one_by_id(
     }
 }
 
-fn build_query_from_property(
-    property_name: String,
-    property_value: impl Serialize,
-    kind: String,
-    limit: i32,
-) -> Result<Query, DatastorersError> {
-    let filter = Filter {
-        property_filter: Some(PropertyFilter {
-            property: Some(PropertyReference {
-                name: Some(property_name),
-            }),
-            value: property_value.serialize()?.map(|v| v.0),
-            op: Some(PropertyFilterOp::Equal),
-        }),
-        ..Default::default()
-    };
-    let query = Query {
-        kind: Some(vec![KindExpression { name: Some(kind) }]),
-        filter: Some(filter),
-        limit: Some(limit),
-        ..Default::default()
-    };
-
-    Ok(query)
-}
-
-pub async fn get_one_by_property(
-    connection: &impl DatastoreConnection,
-    property_name: String,
-    property_value: impl Serialize,
-    kind: String,
-) -> Result<DatastoreEntity, DatastorersError> {
-    let property_filter = PropertyFilter {
-        property: Some(PropertyReference {
-            name: Some(property_name),
-        }),
-        value: property_value.serialize()?.map(|v| v.0),
-        op: Some(PropertyFilterOp::Equal),
-    };
-    let filter = Filter {
-        property_filter: Some(property_filter),
-        ..Default::default()
-    };
-    query_one(Some(filter), kind, connection).await
-}
-
-pub async fn query_one(
+async fn query_one(
     filter: Option<Filter>,
     kind: String,
     connection: &impl DatastoreConnection,
@@ -457,21 +411,6 @@ async fn get_page(
     }
 }
 
-pub async fn get_by_property(
-    connection: &impl DatastoreConnection,
-    property_name: String,
-    property_value: impl Serialize,
-    kind: String,
-    limit: Option<i32>,
-) -> Result<DatastoreEntityCollection, DatastorersError> {
-    let query = build_query_from_property(
-        property_name,
-        property_value,
-        kind,
-        limit.unwrap_or(DEFAULT_PAGE_SIZE),
-    )?;
-    get_page(connection, query).await
-}
 
 impl<T> ResultCollection<T>
 where

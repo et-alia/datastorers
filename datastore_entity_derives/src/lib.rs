@@ -246,21 +246,22 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #self_key_field_expr
             }
 
+            fn create_query() -> datastorers::DatastorersQuery<#name> {
+                datastorers::DatastorersQuery::default()
+            }
+
             pub async fn get_one_by_id(connection: &impl datastorers::DatastoreConnection, key_path: &#key_field_type) -> Result<#name, datastorers::DatastorersError>
             {
-                use std::convert::TryInto;
-                let datastore_entity = datastorers::get_one_by_id(connection, key_path).await?;
-                let result: #name = datastore_entity
-                    .try_into()?;
+                let result = #name::create_query().by_id(connection, key_path).await?;
                 return Ok(result)
             }
             #(
                 pub async fn #entity_getters(connection: &impl datastorers::DatastoreConnection, value: impl datastorers::serialize::Serialize) -> Result<#name, datastorers::DatastorersError>
                 {
-                    use std::convert::TryInto;
-                    let datastore_entity = datastorers::get_one_by_property(connection, #ds_property_names.to_string(), value, #kind_str.to_string()).await?;
-                    let result: #name = datastore_entity
-                        .try_into()?;
+                    let result = #name::create_query()
+                        .filter(#ds_property_names.to_string(), Operator::Equal, value)?
+                        .fetch_one(connection)
+                        .await?;
                     return Ok(result)
                 }
             )*
@@ -268,10 +269,10 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             #(
                 pub async fn #entity_collection_getters(connection: &impl datastorers::DatastoreConnection, value: impl datastorers::serialize::Serialize) -> Result<datastorers::ResultCollection<#name>, datastorers::DatastorersError>
                 {
-                    use std::convert::TryInto;
-                    let entities = datastorers::get_by_property(connection, #ds_property_names.to_string(), value, #kind_str.to_string(), #page_size).await?;
-                    let result: datastorers::ResultCollection<#name> = entities
-                        .try_into()?;
+                    let result = #name::create_query()
+                        .filter(#ds_property_names.to_string(), Operator::Equal, value)?
+                        .fetch(connection)
+                        .await?;
                     return Ok(result)
                 }
             )*
