@@ -12,6 +12,21 @@ use std::convert::TryInto;
 use std::fmt::{Display, Formatter};
 use std::ops::{Deref, DerefMut};
 
+pub trait Kind {
+    /// Get the Entity's kind
+    /// See [kind_str](Kind::kind_str) for a static trait method that returns the same value
+    fn kind(&self) -> &'static str;
+
+    /// Get the Entity's kind
+    /// See [kind](Kind::kind) for an instance trait method that returns the same value
+    fn kind_str() -> &'static str;
+}
+
+pub trait Pagable {
+    // Get default page size for Entity, if one is present
+    fn page_size() -> Option<i32>;
+}
+
 //
 // DatastoreValue
 //

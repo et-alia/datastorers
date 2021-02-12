@@ -1,5 +1,6 @@
 use crate::error::DatastoreKeyError;
-use crate::{DatastorersError, Kind};
+use crate::{DatastorersError};
+use crate::entity::{Kind};
 use google_datastore1::schemas;
 use google_datastore1::schemas::Key;
 use std::convert::TryFrom;
