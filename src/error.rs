@@ -37,6 +37,8 @@ pub enum DatastoreClientError {
     NoMorePages,
     #[error("cannot create transacion from transaction")]
     TransactionInProgress,
+    #[error("missing filter props")]
+    NoFilterProps,
 }
 
 #[derive(Error, Debug, PartialEq)]

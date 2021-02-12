@@ -1,0 +1,7 @@
+indexes:
+- kind: "Test"
+  properties:
+  - name: "Name"
+    direction: desc
+  - name: "int_property"
+    direction: desc

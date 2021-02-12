@@ -10,6 +10,8 @@ use thiserror::Error;
 pub enum DatastoreSerializeError {
     #[error("Could not serialize timestamp_value")]
     DateTimeError,
+    #[error("A non empty value must be set")]
+    NoValueError,
 }
 
 type SerResult = Result<Option<DatastoreValue>, DatastoreSerializeError>;

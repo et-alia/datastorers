@@ -203,6 +203,16 @@ that has the following properties:
 * **bool_property** - Type boolean, not indexed
 * **int_property** - Type integer, indexed
 
+Some tests also require composit indexes in order to be able to run thier queries, to setup the
+required indexes run:
+
+```
+gcloud datastore indexes create ./tests/integration/index.yaml  --project=$TEST_PROJECT_NAME --quiet 
+```
+
+For more details about indexing, see:
+https://cloud.google.com/datastore/docs/concepts/indexes
+
 #### 2. Environment setup:
 
 The following environment variables must be set:
@@ -211,3 +221,14 @@ The following environment variables must be set:
 * **TEST_PROJECT_NAME** - Name of GCP project used for testing.
 
 **NOTE:** The tests adds random data to the datastore, but all data is not removed, without any cleanup actions the amount of data eventually grow large.
+
+## Resources
+
+### Datastore REST API documentation
+https://cloud.google.com/datastore/docs/reference/data/rest
+
+### google_datastore1
+
+https://docs.rs/google-datastore1/1.0.14+20200524/google_datastore1/index.html
+
+https://github.com/bes/google-datastore1-generated
