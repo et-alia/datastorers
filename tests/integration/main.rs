@@ -3,8 +3,9 @@ use rand::{thread_rng, Rng};
 
 use datastorers::transaction::TransactionConnection;
 use datastorers::{
-    delete_one, id, name, DatastoreClientError, DatastoreManaged, DatastoreParseError, DatastorersError, IdentifierId,
-    IdentifierNone, IdentifierName, Kind, Operator, DatastorersQueryable, Order
+    delete_one, id, name, DatastoreClientError, DatastoreManaged, DatastoreParseError,
+    DatastorersError, DatastorersQueryable, IdentifierId, IdentifierName, IdentifierNone, Kind,
+    Operator, Order,
 };
 
 use crate::connection::create_test_connection;
@@ -79,7 +80,6 @@ impl Default for TestEntityOptional {
         }
     }
 }
-
 
 fn generate_random_string(len: usize) -> String {
     thread_rng().sample_iter(&Alphanumeric).take(len).collect()
@@ -654,7 +654,6 @@ async fn test_name_key() -> Result<(), DatastorersError> {
     Ok(())
 }
 
-
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_query_by_props() -> Result<(), DatastorersError> {
@@ -673,43 +672,71 @@ async fn test_query_by_props() -> Result<(), DatastorersError> {
     assert_ne!(expected_result_entity.prop_int, duplicated_entity.prop_int);
 
     let fetched_entity = TestEntity::query()
-        .filter(String::from("Name"), Operator::Equal, expected_result_entity.prop_string)?
-        .fetch_one(&connection).await?;
+        .filter(
+            String::from("Name"),
+            Operator::Equal,
+            expected_result_entity.prop_string,
+        )?
+        .fetch_one(&connection)
+        .await?;
     assert_eq!(fetched_entity.prop_int, expected_result_entity.prop_int);
 
     // Query on multiple properties, shall return one of the two entities with duplicated name
     let fetched_entity_dup_two = TestEntity::query()
-        .filter(String::from("Name"), Operator::Equal, duplicated_entity.prop_string.clone())?
-        .filter(String::from("int_property"), Operator::Equal, duplicated_two.prop_int)?
-        .fetch_one(&connection).await?;
+        .filter(
+            String::from("Name"),
+            Operator::Equal,
+            duplicated_entity.prop_string.clone(),
+        )?
+        .filter(
+            String::from("int_property"),
+            Operator::Equal,
+            duplicated_two.prop_int,
+        )?
+        .fetch_one(&connection)
+        .await?;
     assert_eq!(fetched_entity_dup_two.prop_int, duplicated_two.prop_int);
 
     // Query on with unknown value on the int property => no items shall be found
     assert_client_error(
         TestEntity::query()
-            .filter(String::from("Name"), Operator::Equal, duplicated_entity.prop_string.clone())?
+            .filter(
+                String::from("Name"),
+                Operator::Equal,
+                duplicated_entity.prop_string.clone(),
+            )?
             .filter(String::from("int_property"), Operator::Equal, 42)?
-            .fetch_one(&connection).await,
+            .fetch_one(&connection)
+            .await,
         DatastoreClientError::NotFound,
     );
 
     // Query on name only => shall generate error (multiple items found)
     assert_client_error(
         TestEntity::query()
-            .filter(String::from("Name"), Operator::Equal, duplicated_entity.prop_string.clone())?
-            .fetch_one(&connection).await,
+            .filter(
+                String::from("Name"),
+                Operator::Equal,
+                duplicated_entity.prop_string.clone(),
+            )?
+            .fetch_one(&connection)
+            .await,
         DatastoreClientError::AmbiguousResult,
     );
 
     // Query on name only, fetch multiple => shall return two items
     let fetched_page = TestEntity::query()
-        .filter(String::from("Name"), Operator::Equal, duplicated_entity.prop_string.clone())?
-        .fetch(&connection).await?;
+        .filter(
+            String::from("Name"),
+            Operator::Equal,
+            duplicated_entity.prop_string.clone(),
+        )?
+        .fetch(&connection)
+        .await?;
     assert_eq!(fetched_page.result.len(), 2);
 
     Ok(())
 }
-
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
@@ -726,22 +753,39 @@ async fn test_query_by_props_not_equal() -> Result<(), DatastorersError> {
     let duplicated_two = duplicated_entity.clone().commit(&connection).await?;
 
     let mut fetched_entity = TestEntity::query()
-        .filter(String::from("Name"), Operator::Equal, duplicated_entity.prop_string.clone())?
-        .filter(String::from("int_property"), Operator::GreaterThan, duplicated_one.prop_int)?
-        .fetch_one(&connection).await?;
+        .filter(
+            String::from("Name"),
+            Operator::Equal,
+            duplicated_entity.prop_string.clone(),
+        )?
+        .filter(
+            String::from("int_property"),
+            Operator::GreaterThan,
+            duplicated_one.prop_int,
+        )?
+        .fetch_one(&connection)
+        .await?;
     // prop_int > duplicated_one.prop_int => we shall get duplicated_two
     assert_eq!(fetched_entity.prop_int, duplicated_two.prop_int);
 
     fetched_entity = TestEntity::query()
-        .filter(String::from("Name"), Operator::Equal, duplicated_entity.prop_string.clone())?
-        .filter(String::from("int_property"), Operator::LessThan, duplicated_two.prop_int)?
-        .fetch_one(&connection).await?;
+        .filter(
+            String::from("Name"),
+            Operator::Equal,
+            duplicated_entity.prop_string.clone(),
+        )?
+        .filter(
+            String::from("int_property"),
+            Operator::LessThan,
+            duplicated_two.prop_int,
+        )?
+        .fetch_one(&connection)
+        .await?;
     // prop_int < duplicated_two.prop_int => we shall get duplicated_one
     assert_eq!(fetched_entity.prop_int, duplicated_one.prop_int);
 
     Ok(())
 }
-
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
@@ -832,8 +876,6 @@ async fn test_query_with_limit() -> Result<(), DatastorersError> {
     Ok(())
 }
 
-
-
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_query_with_order() -> Result<(), DatastorersError> {
@@ -846,25 +888,21 @@ async fn test_query_with_order() -> Result<(), DatastorersError> {
     let prop_int_a = base_int_prop + 10;
     let mut prop_string_a = base_string_prop.clone();
     prop_string_a.push_str("A");
-    generate_entity_with_values(
-        prop_string_a,
-        prop_int_a,
-    ).commit(&connection).await?;
+    generate_entity_with_values(prop_string_a, prop_int_a)
+        .commit(&connection)
+        .await?;
     let prop_int_b = base_int_prop - 10;
     let mut prop_string_b = base_string_prop.clone();
     prop_string_b.push_str("A");
-    generate_entity_with_values(
-        prop_string_b,
-        prop_int_b,
-    ).commit(&connection).await?;
+    generate_entity_with_values(prop_string_b, prop_int_b)
+        .commit(&connection)
+        .await?;
     let prop_int_c = base_int_prop + 20;
     let mut prop_string_c = base_string_prop.clone();
     prop_string_c.push_str("C");
-    generate_entity_with_values(
-        prop_string_c,
-        prop_int_c,
-    ).commit(&connection).await?;
-
+    generate_entity_with_values(prop_string_c, prop_int_c)
+        .commit(&connection)
+        .await?;
 
     // Fetch all ordered by prop_string descending and prop_int descending
     let mut max_string_prop = base_string_prop.clone();
@@ -872,29 +910,46 @@ async fn test_query_with_order() -> Result<(), DatastorersError> {
 
     let mut fetched_int_props: Vec<i64> = TestEntity::query()
         .limit(result_size)
-        .filter(String::from("Name"), Operator::GreaterThanOrEqual, base_string_prop.clone())?
-        .filter(String::from("Name"), Operator::LessThan, max_string_prop.clone())?
+        .filter(
+            String::from("Name"),
+            Operator::GreaterThanOrEqual,
+            base_string_prop.clone(),
+        )?
+        .filter(
+            String::from("Name"),
+            Operator::LessThan,
+            max_string_prop.clone(),
+        )?
         .order_by(String::from("Name"), Order::Descending)
         .order_by(String::from("int_property"), Order::Descending)
         .fetch(&connection)
         .await?
-        .result.into_iter()
+        .result
+        .into_iter()
         .map(|e| e.prop_int)
         .collect();
     let mut expected_int_props = vec![prop_int_c, prop_int_a, prop_int_b];
     assert_eq!(fetched_int_props, expected_int_props);
 
-
     // Fetch all ordered by prop_string ascending + prop_int descending
     fetched_int_props = TestEntity::query()
         .limit(result_size)
-        .filter(String::from("Name"), Operator::GreaterThanOrEqual, base_string_prop.clone())?
-        .filter(String::from("Name"), Operator::LessThan, max_string_prop.clone())?
+        .filter(
+            String::from("Name"),
+            Operator::GreaterThanOrEqual,
+            base_string_prop.clone(),
+        )?
+        .filter(
+            String::from("Name"),
+            Operator::LessThan,
+            max_string_prop.clone(),
+        )?
         .order_by(String::from("Name"), Order::Ascending)
         .order_by(String::from("int_property"), Order::Descending)
         .fetch(&connection)
         .await?
-        .result.into_iter()
+        .result
+        .into_iter()
         .map(|e| e.prop_int)
         .collect();
     expected_int_props = vec![prop_int_a, prop_int_b, prop_int_c];
@@ -903,13 +958,22 @@ async fn test_query_with_order() -> Result<(), DatastorersError> {
     // Fetch all ordered by prop_string ascending + prop_int ascending
     fetched_int_props = TestEntity::query()
         .limit(result_size)
-        .filter(String::from("Name"), Operator::GreaterThanOrEqual, base_string_prop.clone())?
-        .filter(String::from("Name"), Operator::LessThan, max_string_prop.clone())?
+        .filter(
+            String::from("Name"),
+            Operator::GreaterThanOrEqual,
+            base_string_prop.clone(),
+        )?
+        .filter(
+            String::from("Name"),
+            Operator::LessThan,
+            max_string_prop.clone(),
+        )?
         .order_by(String::from("Name"), Order::Ascending)
         .order_by(String::from("int_property"), Order::Ascending)
         .fetch(&connection)
         .await?
-        .result.into_iter()
+        .result
+        .into_iter()
         .map(|e| e.prop_int)
         .collect();
     expected_int_props = vec![prop_int_b, prop_int_a, prop_int_c];

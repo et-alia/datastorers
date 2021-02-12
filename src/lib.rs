@@ -4,8 +4,8 @@ use std::convert::TryInto;
 
 pub use crate::connection::DatastoreConnection;
 pub use crate::entity::{
-    DatastoreEntity, DatastoreEntityCollection, DatastoreProperties, DatastoreValue,
-    ResultCollection, Kind, Pagable
+    DatastoreEntity, DatastoreEntityCollection, DatastoreProperties, DatastoreValue, Kind, Pagable,
+    ResultCollection,
 };
 pub use crate::error::*;
 pub use crate::identifier::*;
@@ -13,10 +13,9 @@ pub use crate::query::*;
 
 pub use datastore_entity_derives::DatastoreManaged;
 
-
 use google_datastore1::schemas::{
-    BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity,
-    Key, Mutation, MutationResult,
+    BeginTransactionRequest, BeginTransactionResponse, CommitRequest, CommitResponse, Entity, Key,
+    Mutation, MutationResult,
 };
 
 pub mod bytes;
@@ -25,10 +24,9 @@ pub mod deserialize;
 mod entity;
 pub mod error;
 mod identifier;
+pub mod query;
 pub mod serialize;
 pub mod transaction;
-pub mod query;
-
 
 async fn commit(
     connection: &impl DatastoreConnection,
@@ -149,5 +147,3 @@ pub async fn delete_one(
         Err(DatastoreClientError::DeleteFailed.into())
     }
 }
-
-
