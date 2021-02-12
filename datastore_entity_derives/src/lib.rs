@@ -246,19 +246,19 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                 #self_key_field_expr
             }
 
-            fn create_query() -> datastorers::DatastorersQuery<#name> {
-                datastorers::DatastorersQuery::default()
-            }
-
             pub async fn get_one_by_id(connection: &impl datastorers::DatastoreConnection, key_path: &#key_field_type) -> Result<#name, datastorers::DatastorersError>
             {
-                let result = #name::create_query().by_id(connection, key_path).await?;
+                use datastorers::DatastorersQueryable;
+
+                let result = #name::query().by_id(connection, key_path).await?;
                 return Ok(result)
             }
             #(
                 pub async fn #entity_getters(connection: &impl datastorers::DatastoreConnection, value: impl datastorers::serialize::Serialize) -> Result<#name, datastorers::DatastorersError>
                 {
-                    let result = #name::create_query()
+                    use datastorers::DatastorersQueryable;
+
+                    let result = #name::query()
                         .filter(#ds_property_names.to_string(), Operator::Equal, value)?
                         .fetch_one(connection)
                         .await?;
@@ -269,7 +269,9 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             #(
                 pub async fn #entity_collection_getters(connection: &impl datastorers::DatastoreConnection, value: impl datastorers::serialize::Serialize) -> Result<datastorers::ResultCollection<#name>, datastorers::DatastorersError>
                 {
-                    let result = #name::create_query()
+                    use datastorers::DatastorersQueryable;
+
+                    let result = #name::query()
                         .filter(#ds_property_names.to_string(), Operator::Equal, value)?
                         .fetch(connection)
                         .await?;
