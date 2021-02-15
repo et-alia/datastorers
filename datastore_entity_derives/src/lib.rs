@@ -278,24 +278,6 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
                     return Ok(result)
                 }
             )*
-
-            pub async fn commit(self, connection: &impl datastorers::DatastoreConnection) -> Result<#name, datastorers::DatastorersError>
-            {
-                use std::convert::TryInto;
-                let result_entity = datastorers::commit_one(
-                    connection,
-                    self.try_into()?,
-                ).await?;
-                let result: #name = result_entity
-                    .try_into()?;
-                return Ok(result)
-            }
-
-            pub async fn delete(self, connection: &impl datastorers::DatastoreConnection) -> Result<(), datastorers::DatastorersError>
-            {
-                use std::convert::TryInto;
-                datastorers::delete_one(connection, self.try_into()?).await
-            }
         }
 
         impl core::convert::TryFrom<datastorers::DatastoreEntity> for #name {
