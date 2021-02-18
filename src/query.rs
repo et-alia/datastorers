@@ -104,6 +104,27 @@ where
         Ok(self)
     }
 
+    pub fn ancestor(
+        mut self,
+        key_path: &impl KeyPath,
+    ) -> Result<DatastorersQuery<E>, DatastorersError> {
+        let mut value = DatastoreValue::empty();
+        value.key_value = Some(key_path.get_key());
+
+        match self.filter {
+            Some(ref mut filter) => {
+                filter.push(String::from("__key__"), Operator::HasAncestor, value);
+            }
+            None => {
+                let mut filter = DatastorersPropertyFilter::default();
+                filter.push(String::from("__key__"), Operator::HasAncestor, value);
+                self.filter = Some(filter);
+            }
+        };
+
+        Ok(self)
+    }
+
     pub fn limit(mut self, limit: i32) -> DatastorersQuery<E> {
         self.limit = Some(limit);
 
@@ -196,6 +217,7 @@ pub enum Operator {
     GreaterThanOrEqual,
     LessThan,
     LessThanOrEqual,
+    HasAncestor,
 }
 
 impl From<Operator> for PropertyFilterOp {
@@ -206,6 +228,7 @@ impl From<Operator> for PropertyFilterOp {
             Operator::GreaterThanOrEqual => PropertyFilterOp::GreaterThanOrEqual,
             Operator::LessThan => PropertyFilterOp::LessThan,
             Operator::LessThanOrEqual => PropertyFilterOp::LessThanOrEqual,
+            Operator::HasAncestor => PropertyFilterOp::HasAncestor,
         }
     }
 }
