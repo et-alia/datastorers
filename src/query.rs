@@ -140,7 +140,7 @@ where
             Some(prop_filter) => prop_filter.try_into().map(Some),
         }?;
 
-        let query_result = query_one(filter, String::from(E::kind_str()), connection).await?;
+        let query_result = query_one(connection, filter, String::from(E::kind_str())).await?;
         let entity: E = query_result.try_into()?;
         Ok(entity)
     }
@@ -333,9 +333,9 @@ async fn get_one_by_id(
 }
 
 async fn query_one(
+    connection: &impl DatastoreConnection,
     filter: Option<Filter>,
     kind: String,
-    connection: &impl DatastoreConnection,
 ) -> Result<DatastoreEntity, DatastorersError> {
     let client = connection.get_client();
     let projects = client.projects();
