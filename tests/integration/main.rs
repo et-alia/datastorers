@@ -2,15 +2,14 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 
 use datastorers::transaction::TransactionConnection;
+use datastorers::DatastorersUpdatable;
 use datastorers::{
-    delete_one, id, name, DatastoreClientError, DatastoreManaged, DatastoreParseError,
-    DatastorersError, DatastorersQueryable, IdentifierId, IdentifierName, IdentifierNone, Kind,
-    Operator, Order,
+    id, name, DatastoreClientError, DatastoreManaged, DatastoreParseError, DatastorersError,
+    DatastorersQueryable, IdentifierId, IdentifierName, IdentifierNone, Kind, Operator, Order,
 };
 
 use crate::connection::create_test_connection;
 
-use std::convert::TryInto;
 mod connection;
 
 #[derive(DatastoreManaged, Clone, Debug)]
@@ -637,7 +636,7 @@ async fn test_name_key() -> Result<(), DatastorersError> {
     };
 
     // Delete if it exists
-    let _ = delete_one(&connection, entity.clone().try_into()?).await;
+    let _ = entity.clone().delete(&connection).await;
 
     // Insert it
     let _ = entity.clone().commit(&connection).await?;
@@ -649,7 +648,7 @@ async fn test_name_key() -> Result<(), DatastorersError> {
     assert_eq!(&entity.prop_string, &fetched.prop_string);
 
     // Delete it again
-    let _ = delete_one(&connection, entity.clone().try_into()?).await?;
+    let _ = entity.delete(&connection).await?;
 
     Ok(())
 }
