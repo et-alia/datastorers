@@ -15,13 +15,11 @@ pub enum DatastoreDeserializeError {
     ParseError(#[from] ParseError),
 }
 
-type DeResult<T> = Result<T, DatastoreDeserializeError>;
-
 pub trait Deserialize
 where
     Self: Sized + Debug,
 {
-    fn deserialize(value: DatastoreValue) -> DeResult<Self>;
+    fn deserialize(value: DatastoreValue) -> Result<Self, DatastoreDeserializeError>;
 
     /// If the value is missing from [`datastorers::DatastoreProperties`], provide this default.
     /// The default is None, meaning the missing value is propagated as an error.
@@ -33,7 +31,7 @@ where
 
 /// Blanket impl for Option
 impl<T: Deserialize> Deserialize for Option<T> {
-    fn deserialize(value: DatastoreValue) -> DeResult<Self> {
+    fn deserialize(value: DatastoreValue) -> Result<Self, DatastoreDeserializeError> {
         match T::deserialize(value) {
             Ok(value) => Ok(Some(value)),
             Err(err) => match err {
@@ -50,7 +48,7 @@ impl<T: Deserialize> Deserialize for Option<T> {
 
 /// Blanket impl for Vec
 impl<T: Deserialize> Deserialize for Vec<T> {
-    fn deserialize(value: DatastoreValue) -> DeResult<Self> {
+    fn deserialize(value: DatastoreValue) -> Result<Self, DatastoreDeserializeError> {
         match value.0.array_value {
             Some(array_value) => array_value.values.map_or_else(
                 // If there are no values, just return an empty array
@@ -70,7 +68,7 @@ impl<T: Deserialize> Deserialize for Vec<T> {
 }
 
 impl Deserialize for String {
-    fn deserialize(value: DatastoreValue) -> DeResult<Self> {
+    fn deserialize(value: DatastoreValue) -> Result<Self, DatastoreDeserializeError> {
         value
             .0
             .string_value
@@ -79,7 +77,7 @@ impl Deserialize for String {
 }
 
 impl Deserialize for i64 {
-    fn deserialize(value: DatastoreValue) -> DeResult<Self> {
+    fn deserialize(value: DatastoreValue) -> Result<Self, DatastoreDeserializeError> {
         value
             .0
             .integer_value
@@ -88,7 +86,7 @@ impl Deserialize for i64 {
 }
 
 impl Deserialize for f64 {
-    fn deserialize(value: DatastoreValue) -> DeResult<Self> {
+    fn deserialize(value: DatastoreValue) -> Result<Self, DatastoreDeserializeError> {
         value
             .0
             .double_value
@@ -97,7 +95,7 @@ impl Deserialize for f64 {
 }
 
 impl Deserialize for bool {
-    fn deserialize(value: DatastoreValue) -> DeResult<Self> {
+    fn deserialize(value: DatastoreValue) -> Result<Self, DatastoreDeserializeError> {
         value
             .0
             .boolean_value
@@ -106,7 +104,7 @@ impl Deserialize for bool {
 }
 
 impl Deserialize for Bytes {
-    fn deserialize(value: DatastoreValue) -> DeResult<Self> {
+    fn deserialize(value: DatastoreValue) -> Result<Self, DatastoreDeserializeError> {
         let blob_b64 = value
             .0
             .blob_value
@@ -117,7 +115,7 @@ impl Deserialize for Bytes {
 }
 
 impl Deserialize for NaiveDateTime {
-    fn deserialize(value: DatastoreValue) -> DeResult<Self> {
+    fn deserialize(value: DatastoreValue) -> Result<Self, DatastoreDeserializeError> {
         let date_string = value
             .0
             .timestamp_value
