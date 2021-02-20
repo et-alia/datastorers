@@ -14,15 +14,13 @@ pub enum DatastoreSerializeError {
     NoValueError,
 }
 
-type SerResult = Result<Option<DatastoreValue>, DatastoreSerializeError>;
-
 pub trait Serialize {
-    fn serialize(self) -> SerResult;
+    fn serialize(self) -> Result<Option<DatastoreValue>, DatastoreSerializeError>;
 }
 
 /// Blanket impl for Option
 impl<T: Serialize> Serialize for Option<T> {
-    fn serialize(self) -> SerResult {
+    fn serialize(self) -> Result<Option<DatastoreValue>, DatastoreSerializeError> {
         match self {
             Some(some) => some.serialize(),
             None => Ok(None),
@@ -32,7 +30,7 @@ impl<T: Serialize> Serialize for Option<T> {
 
 /// Blanket impl for Vec
 impl<T: Serialize> Serialize for Vec<T> {
-    fn serialize(self) -> SerResult {
+    fn serialize(self) -> Result<Option<DatastoreValue>, DatastoreSerializeError> {
         let array_of_opts = self
             .into_iter()
             .map(Serialize::serialize)
@@ -47,7 +45,7 @@ impl<T: Serialize> Serialize for Vec<T> {
 }
 
 impl Serialize for String {
-    fn serialize(self) -> SerResult {
+    fn serialize(self) -> Result<Option<DatastoreValue>, DatastoreSerializeError> {
         let mut value = DatastoreValue::empty();
         value.string_value = Some(self);
         Ok(Some(value))
@@ -55,7 +53,7 @@ impl Serialize for String {
 }
 
 impl Serialize for i64 {
-    fn serialize(self) -> SerResult {
+    fn serialize(self) -> Result<Option<DatastoreValue>, DatastoreSerializeError> {
         let mut value = DatastoreValue::empty();
         value.integer_value = Some(self);
         Ok(Some(value))
@@ -63,7 +61,7 @@ impl Serialize for i64 {
 }
 
 impl Serialize for f64 {
-    fn serialize(self) -> SerResult {
+    fn serialize(self) -> Result<Option<DatastoreValue>, DatastoreSerializeError> {
         let mut value = DatastoreValue::empty();
         value.double_value = Some(self);
         Ok(Some(value))
@@ -71,7 +69,7 @@ impl Serialize for f64 {
 }
 
 impl Serialize for bool {
-    fn serialize(self) -> SerResult {
+    fn serialize(self) -> Result<Option<DatastoreValue>, DatastoreSerializeError> {
         let mut value = DatastoreValue::empty();
         value.boolean_value = Some(self);
         Ok(Some(value))
@@ -79,7 +77,7 @@ impl Serialize for bool {
 }
 
 impl Serialize for Bytes {
-    fn serialize(self) -> SerResult {
+    fn serialize(self) -> Result<Option<DatastoreValue>, DatastoreSerializeError> {
         let mut value = DatastoreValue::empty();
         let encoded = BASE64_CFG.encode(&self.0);
         value.blob_value = Some(encoded);
@@ -88,7 +86,7 @@ impl Serialize for Bytes {
 }
 
 impl Serialize for NaiveDateTime {
-    fn serialize(self) -> SerResult {
+    fn serialize(self) -> Result<Option<DatastoreValue>, DatastoreSerializeError> {
         let mut value = DatastoreValue::empty();
         let date_time: DateTime<Utc> = match Utc.from_local_datetime(&self) {
             LocalResult::None => return Err(DatastoreSerializeError::DateTimeError),
