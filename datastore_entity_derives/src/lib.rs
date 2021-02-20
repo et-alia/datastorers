@@ -256,7 +256,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             #(
                 pub async fn #entity_getters(connection: &impl datastorers::DatastoreConnection, value: impl datastorers::serialize::Serialize) -> Result<#name, datastorers::DatastorersError>
                 {
-                    use datastorers::DatastorersQueryable;
+                    use datastorers::{DatastorersQueryable, Operator};
 
                     let result = #name::query()
                         .filter(#ds_property_names.to_string(), Operator::Equal, value)?
@@ -269,7 +269,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             #(
                 pub async fn #entity_collection_getters(connection: &impl datastorers::DatastoreConnection, value: impl datastorers::serialize::Serialize) -> Result<datastorers::ResultCollection<#name>, datastorers::DatastorersError>
                 {
-                    use datastorers::DatastorersQueryable;
+                    use datastorers::{DatastorersQueryable, Operator};
 
                     let result = #name::query()
                         .filter(#ds_property_names.to_string(), Operator::Equal, value)?
