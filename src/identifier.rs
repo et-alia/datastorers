@@ -31,7 +31,7 @@ pub trait KeyPathElement: Sized {
 
     /// Convert a slice of [PathElements](schemas::PathElement) to a KeyPathElement.
     /// Any implementation should read the [PathElement](schemas::PathElement) at the
-    /// given index, unless it is one past the end of the slice. The 0th element is allowed
+    /// given index, unless it is one past the end of the slice. The last element is allowed
     /// to be "empty" (no id, no name), every other element must have either an id or a name
     /// and the identifier must match the type it is parsing into:
     /// * id for [IdentifierId](IdentifierId)
@@ -39,6 +39,7 @@ pub trait KeyPathElement: Sized {
     fn from_path_elements(
         path_elements: &[schemas::PathElement],
         index: usize,
+        path_length: usize,
     ) -> Result<Self, DatastorersError>;
 }
 
@@ -75,62 +76,73 @@ pub enum Identifier {
 ///     #[key]
 ///     key: IdentifierId<Self>,
 /// }
+///
+/// #[derive(DatastoreManaged)]
+/// #[kind="my_child_entity"]
+/// struct MyChildEntity {
+///     /// A key path with "MyEntity" as ancestors and an identifier id of type i64
+///     #[key]
+///     key: IdentifierId<MyEntity, IdentifierId<Self>>,
+/// }
 /// ```
 #[derive(Clone, Debug)]
-pub struct IdentifierId<T, Ancestor = IdentifierNone>
+pub struct IdentifierId<T, Child = IdentifierNone>
 where
     T: Kind,
-    Ancestor: KeyPathElement + PartialEq,
+    Child: KeyPathElement + PartialEq,
 {
     pub id: Option<i64>,
-    pub ancestor: Box<Ancestor>,
+    pub child: Box<Child>,
     phantom_kind: PhantomData<T>,
 }
 
-impl<T, Ancestor> PartialEq for IdentifierId<T, Ancestor>
+impl<T, Child> PartialEq for IdentifierId<T, Child>
 where
     T: Kind,
-    Ancestor: KeyPathElement + PartialEq,
+    Child: KeyPathElement + PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id && self.ancestor == other.ancestor
+        self.id == other.id && self.child == other.child
     }
 }
 
-impl<T, Ancestor> TryFrom<schemas::Key> for IdentifierId<T, Ancestor>
+impl<T, Child> TryFrom<schemas::Key> for IdentifierId<T, Child>
 where
     T: Kind,
-    Ancestor: KeyPathElement + PartialEq,
+    Child: KeyPathElement + PartialEq,
 {
     type Error = DatastorersError;
 
     fn try_from(value: Key) -> Result<Self, Self::Error> {
         if let Some(path) = value.path {
-            Self::from_path_elements(&path, 0)
+            match path.len() {
+                0 => Err(DatastoreKeyError::NoKeyPathElement.into()),
+                len => Self::from_path_elements(&path, 0, len - 1),
+            }
         } else {
             Err(DatastoreKeyError::NoKeyPath.into())
         }
     }
 }
 
-impl<T, Ancestor> IdentifierId<T, Ancestor>
+impl<T, Child> IdentifierId<T, Child>
 where
     T: Kind,
-    Ancestor: KeyPathElement + PartialEq,
+    Child: KeyPathElement + PartialEq,
 {
-    pub fn id(id: Option<i64>, ancestor: Ancestor) -> Self {
+    pub fn id(id: Option<i64>, child: Child) -> Self {
         Self {
             id,
-            ancestor: Box::new(ancestor),
+            child: Box::new(child),
             phantom_kind: Default::default(),
         }
     }
 }
 
-impl<T, Ancestor> KeyPathElement for IdentifierId<T, Ancestor>
+impl<T, Child> KeyPathElement for IdentifierId<T, Child>
 where
     T: Kind,
-    Ancestor: KeyPathElement + PartialEq,
+    Child: KeyPathElement + PartialEq,
 {
     fn identifier(&self) -> Identifier {
         match self.id {
@@ -159,23 +171,26 @@ where
             },
             None => (),
         }
-        self.ancestor.as_ref().fill_key(key);
+        self.child.as_ref().fill_key(key);
     }
 
     fn from_path_elements(
         path_elements: &[schemas::PathElement],
         index: usize,
+        path_length: usize,
     ) -> Result<Self, DatastorersError> {
         match path_elements.get(index) {
             Some(path_element) => {
                 if let Some(kind) = path_element.kind.as_ref() {
                     if kind == T::kind_str() {
                         if let Some(id) = path_element.id {
-                            let ancestor = Ancestor::from_path_elements(path_elements, index + 1)?;
-                            Ok(IdentifierId::id(Some(id), ancestor))
-                        } else if index == 0 {
-                            let ancestor = Ancestor::from_path_elements(path_elements, index + 1)?;
-                            Ok(IdentifierId::id(None, ancestor))
+                            let child =
+                                Child::from_path_elements(path_elements, index + 1, path_length)?;
+                            Ok(IdentifierId::id(Some(id), child))
+                        } else if index == path_length {
+                            let child =
+                                Child::from_path_elements(path_elements, index + 1, path_length)?;
+                            Ok(IdentifierId::id(None, child))
                         } else {
                             Err(DatastoreKeyError::ExpectedId.into())
                         }
@@ -191,9 +206,9 @@ where
                 }
             }
             None => {
-                if index == 0 {
-                    let ancestor = Ancestor::from_path_elements(path_elements, index + 1)?;
-                    Ok(IdentifierId::id(None, ancestor))
+                if index == path_length {
+                    let child = Child::from_path_elements(path_elements, index + 1, path_length)?;
+                    Ok(IdentifierId::id(None, child))
                 } else {
                     Err(DatastoreKeyError::NoKeyPathElement.into())
                 }
@@ -216,60 +231,63 @@ where
 /// }
 /// ```
 #[derive(Clone, Debug)]
-pub struct IdentifierName<T, Ancestor = IdentifierNone>
+pub struct IdentifierName<T, Child = IdentifierNone>
 where
     T: Kind,
-    Ancestor: KeyPathElement + PartialEq,
+    Child: KeyPathElement + PartialEq,
 {
     pub name: Option<String>,
-    pub ancestor: Box<Ancestor>,
+    pub child: Box<Child>,
     phantom_kind: PhantomData<T>,
 }
 
-impl<T, Ancestor> PartialEq for IdentifierName<T, Ancestor>
+impl<T, Child> PartialEq for IdentifierName<T, Child>
 where
     T: Kind,
-    Ancestor: KeyPathElement + PartialEq,
+    Child: KeyPathElement + PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.ancestor == other.ancestor
+        self.name == other.name && self.child == other.child
     }
 }
 
-impl<T, Ancestor> TryFrom<schemas::Key> for IdentifierName<T, Ancestor>
+impl<T, Child> TryFrom<schemas::Key> for IdentifierName<T, Child>
 where
     T: Kind,
-    Ancestor: KeyPathElement + PartialEq,
+    Child: KeyPathElement + PartialEq,
 {
     type Error = DatastorersError;
 
     fn try_from(value: Key) -> Result<Self, Self::Error> {
         if let Some(path) = value.path {
-            Self::from_path_elements(&path, 0)
+            match path.len() {
+                0 => Err(DatastoreKeyError::NoKeyPathElement.into()),
+                len => Self::from_path_elements(&path, 0, len - 1),
+            }
         } else {
             Err(DatastoreKeyError::NoKeyPath.into())
         }
     }
 }
 
-impl<T, Ancestor> IdentifierName<T, Ancestor>
+impl<T, Child> IdentifierName<T, Child>
 where
     T: Kind,
-    Ancestor: KeyPathElement + PartialEq,
+    Child: KeyPathElement + PartialEq,
 {
-    pub fn name(name: Option<String>, ancestor: Ancestor) -> Self {
+    pub fn name(name: Option<String>, child: Child) -> Self {
         Self {
             name,
-            ancestor: Box::new(ancestor),
+            child: Box::new(child),
             phantom_kind: Default::default(),
         }
     }
 }
 
-impl<T, Ancestor> KeyPathElement for IdentifierName<T, Ancestor>
+impl<T, Child> KeyPathElement for IdentifierName<T, Child>
 where
     T: Kind,
-    Ancestor: KeyPathElement + PartialEq,
+    Child: KeyPathElement + PartialEq,
 {
     fn identifier(&self) -> Identifier {
         match &self.name {
@@ -298,23 +316,26 @@ where
             },
             None => (),
         }
-        self.ancestor.as_ref().fill_key(key);
+        self.child.as_ref().fill_key(key);
     }
 
     fn from_path_elements(
         path_elements: &[schemas::PathElement],
         index: usize,
+        path_length: usize,
     ) -> Result<Self, DatastorersError> {
         match path_elements.get(index) {
             Some(path_element) => {
                 if let Some(kind) = path_element.kind.as_ref() {
                     if kind == T::kind_str() {
                         if let Some(name) = path_element.name.as_ref() {
-                            let ancestor = Ancestor::from_path_elements(path_elements, index + 1)?;
-                            Ok(IdentifierName::name(Some(name.clone()), ancestor))
+                            let child =
+                                Child::from_path_elements(path_elements, index + 1, path_length)?;
+                            Ok(IdentifierName::name(Some(name.clone()), child))
                         } else if index == 0 {
-                            let ancestor = Ancestor::from_path_elements(path_elements, index + 1)?;
-                            Ok(IdentifierName::name(None, ancestor))
+                            let child =
+                                Child::from_path_elements(path_elements, index + 1, path_length)?;
+                            Ok(IdentifierName::name(None, child))
                         } else {
                             Err(DatastoreKeyError::ExpectedName.into())
                         }
@@ -331,8 +352,8 @@ where
             }
             None => {
                 if index == 0 {
-                    let ancestor = Ancestor::from_path_elements(path_elements, index + 1)?;
-                    Ok(IdentifierName::name(None, ancestor))
+                    let child = Child::from_path_elements(path_elements, index + 1, path_length)?;
+                    Ok(IdentifierName::name(None, child))
                 } else {
                     Err(DatastoreKeyError::NoKeyPathElement.into())
                 }
@@ -385,6 +406,7 @@ impl KeyPathElement for IdentifierNone {
     fn from_path_elements(
         _path_elements: &[schemas::PathElement],
         _index: usize,
+        _path_length: usize,
     ) -> Result<Self, DatastorersError> {
         Ok(Self {})
     }

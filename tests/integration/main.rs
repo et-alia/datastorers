@@ -68,6 +68,17 @@ pub struct TestEntityName {
     pub prop_string: String,
 }
 
+#[derive(DatastoreManaged, Clone, Debug)]
+#[kind = "TestChild"]
+pub struct TestEntityChild {
+    #[key]
+    pub key: IdentifierId<TestEntity, IdentifierId<Self>>,
+
+    #[indexed]
+    #[property = "Name"]
+    pub name: String,
+}
+
 impl Default for TestEntityOptional {
     fn default() -> Self {
         TestEntityOptional {
@@ -116,6 +127,13 @@ fn generate_entity_with_values(prop_string: String, prop_int: i64) -> TestEntity
         prop_bool: generate_random_bool(),
         prop_int,
         prop_string_array: vec![],
+    }
+}
+
+fn generate_child(parent: &TestEntity) -> TestEntityChild {
+    TestEntityChild {
+        key: IdentifierId::id(parent.key.id, id![None]),
+        name: generate_random_string(10),
     }
 }
 
@@ -979,4 +997,59 @@ async fn test_query_with_order() -> Result<(), DatastorersError> {
     assert_eq!(fetched_int_props, expected_int_props);
 
     Ok(())
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_query_with_ancestor() -> Result<(), DatastorersError> {
+    let connection = create_test_connection().await;
+
+    // Create two parents
+    let parent_a = generate_random_entity().commit(&connection).await?;
+    let parent_b = generate_random_entity().commit(&connection).await?;
+
+    // Create two children for each parent
+    let child_a_a = generate_child(&parent_a).commit(&connection).await?;
+    let child_b_a = generate_child(&parent_b).commit(&connection).await?;
+    let child_a_b = generate_child(&parent_a).commit(&connection).await?;
+    let child_b_b = generate_child(&parent_b).commit(&connection).await?;
+
+    // Fetch children using the parents key
+    let mut result_names: Vec<String> = TestEntityChild::query()
+        .ancestor(&parent_a.key)?
+        .fetch(&connection)
+        .await?
+        .result
+        .into_iter()
+        .map(|e| e.name)
+        .collect();
+
+    // Validate result
+    assert_eq!(result_names.len(), 2);
+
+    assert!(contains(&result_names, &child_a_a.name));
+    assert!(contains(&result_names, &child_a_b.name));
+
+    // Serch with other parents key
+    result_names = TestEntityChild::query()
+        .ancestor(&parent_b.key)?
+        .fetch(&connection)
+        .await?
+        .result
+        .into_iter()
+        .map(|e| e.name)
+        .collect();
+
+    // Validate result
+    assert_eq!(result_names.len(), 2);
+
+    // Shall yeild the b children as results
+    assert!(contains(&result_names, &child_b_a.name));
+    assert!(contains(&result_names, &child_b_b.name));
+
+    Ok(())
+}
+
+fn contains(set: &[String], val: &str) -> bool {
+    set.iter().any(|v| v == val)
 }

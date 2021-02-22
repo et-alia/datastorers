@@ -118,22 +118,22 @@ fn deserialize_from_valid_incomplete_key() -> Result<(), DatastorersError> {
             PathElement {
                 id: None,
                 kind: Some("a".to_string()),
-                name: None,
+                name: Some("ancestor".to_string()),
             },
             PathElement {
                 id: None,
                 kind: Some("b".to_string()),
-                name: Some("ancestor".to_string()),
+                name: None,
             },
         ]),
     };
 
-    let identifier: IdentifierId<KindA, IdentifierName<KindB>> = key.try_into()?;
+    let identifier: IdentifierName<KindA, IdentifierId<KindB>> = key.try_into()?;
 
-    assert_eq!(None, identifier.id);
     assert_eq!("a", identifier.kind());
-    assert_eq!(Some("ancestor".to_string()), identifier.ancestor.name);
-    assert_eq!("b", identifier.ancestor.kind());
+    assert_eq!(Some("ancestor".to_string()), identifier.name);
+    assert_eq!(None, identifier.child.id);
+    assert_eq!("b", identifier.child.kind());
 
     Ok(())
 }
@@ -170,7 +170,7 @@ fn deserialize_from_invalid_key_without_id() {
         partition_id: None,
         path: Some(vec![
             PathElement {
-                id: Some(487),
+                id: None,
                 kind: Some("a".to_string()),
                 name: None,
             },
@@ -355,19 +355,19 @@ fn test_name_macro_variable() {
 fn test_id_macro_name_macro() {
     let identifier: IdentifierId<KindA, IdentifierName<KindB>> = id![2001, name!["thing"]];
     assert_eq!(2001, identifier.id.unwrap());
-    assert_eq!("thing", identifier.ancestor.name.unwrap());
+    assert_eq!("thing", identifier.child.name.unwrap());
 }
 
 #[test]
 fn test_id_macro_none_name_macro() {
     let identifier: IdentifierId<KindA, IdentifierName<KindB>> = id![None, name!["thing"]];
     assert_eq!(None, identifier.id);
-    assert_eq!("thing", identifier.ancestor.name.unwrap());
+    assert_eq!("thing", identifier.child.name.unwrap());
 }
 
 #[test]
 fn test_name_macro_none_name_macro() {
     let identifier: IdentifierName<KindA, IdentifierName<KindB>> = name![None, name!["thing"]];
     assert_eq!(None, identifier.name);
-    assert_eq!("thing", identifier.ancestor.name.unwrap());
+    assert_eq!("thing", identifier.child.name.unwrap());
 }
