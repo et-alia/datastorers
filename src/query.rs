@@ -2,6 +2,8 @@ use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::marker::PhantomData;
 
+use async_trait::async_trait;
+
 use crate::connection::DatastoreConnection;
 use crate::entity::{
     DatastoreEntity, DatastoreEntityCollection, DatastoreValue, Kind, Pagable, ResultCollection,
@@ -12,13 +14,14 @@ use crate::identifier::KeyPath;
 use crate::serialize::{DatastoreSerializeError, Serialize};
 
 use google_datastore1::schemas::{
-    CompositeFilter, CompositeFilterOp, Filter, KindExpression, LookupRequest, LookupResponse,
+    CompositeFilter, CompositeFilterOp, Filter, Key, KindExpression, LookupRequest, LookupResponse,
     PropertyFilter, PropertyFilterOp, PropertyOrder, PropertyOrderDirection, PropertyReference,
     Query, QueryResultBatchMoreResults, ReadOptions, RunQueryRequest, RunQueryResponse,
 };
 
 const DEFAULT_PAGE_SIZE: i32 = 50;
 
+#[async_trait]
 pub trait DatastorersQueryable<E>
 where
     E: Kind
@@ -27,29 +30,21 @@ where
         + TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
     fn query() -> DatastorersQuery<E>;
-
-    fn get_default_page_size() -> Option<i32>;
 }
 
+#[async_trait]
 impl<T> DatastorersQueryable<T> for T
 where
-    T: Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError>,
+    T: Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError> + Send + Sync,
 {
     fn query() -> DatastorersQuery<T> {
         DatastorersQuery::default()
-    }
-
-    fn get_default_page_size() -> Option<i32> {
-        T::page_size()
     }
 }
 
 pub struct DatastorersQuery<E>
 where
-    E: Kind
-        + Pagable
-        + DatastorersQueryable<E>
-        + TryFrom<DatastoreEntity, Error = DatastorersError>,
+    E: Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
     entity: PhantomData<E>,
     filter: Option<DatastorersPropertyFilter>,
@@ -59,10 +54,7 @@ where
 
 impl<E> Default for DatastorersQuery<E>
 where
-    E: Kind
-        + Pagable
-        + DatastorersQueryable<E>
-        + TryFrom<DatastoreEntity, Error = DatastorersError>,
+    E: Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
     fn default() -> Self {
         DatastorersQuery {
@@ -76,10 +68,7 @@ where
 
 impl<E> DatastorersQuery<E>
 where
-    E: Kind
-        + Pagable
-        + DatastorersQueryable<E>
-        + TryFrom<DatastoreEntity, Error = DatastorersError>,
+    E: Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
     pub fn filter(
         mut self,
@@ -142,7 +131,7 @@ where
         self
     }
 
-    pub async fn by_id(
+    pub async fn lookup_one(
         self,
         connection: &impl DatastoreConnection,
         key_path: &impl KeyPath,
@@ -150,6 +139,24 @@ where
         let query_result = get_one_by_id(connection, key_path).await?;
         let entity: E = query_result.try_into()?;
         Ok(entity)
+    }
+
+    pub async fn lookup(
+        self,
+        connection: &impl DatastoreConnection,
+        key_paths: Vec<&impl KeyPath>,
+    ) -> Result<Vec<E>, DatastorersError> {
+        let keys: Vec<Key> = key_paths.into_iter().map(|k| k.get_key()).collect();
+        let entities = entity_lookup(connection, keys)
+            .await?
+            .into_iter()
+            .map(|e| {
+                let result: E = e.try_into()?;
+                Ok(result)
+            })
+            .collect::<Result<Vec<E>, DatastorersError>>()?;
+
+        Ok(entities)
     }
 
     pub async fn fetch_one(
@@ -180,10 +187,7 @@ where
 
 impl<E> TryFrom<DatastorersQuery<E>> for Query
 where
-    E: Kind
-        + Pagable
-        + DatastorersQueryable<E>
-        + TryFrom<DatastoreEntity, Error = DatastorersError>,
+    E: Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
     type Error = DatastorersError;
 
@@ -203,7 +207,7 @@ where
             filter,
             limit: item
                 .limit
-                .or_else(|| E::get_default_page_size().or(Some(DEFAULT_PAGE_SIZE))),
+                .or_else(|| E::page_size().or(Some(DEFAULT_PAGE_SIZE))),
             order,
             ..Default::default()
         })
@@ -325,21 +329,8 @@ async fn get_one_by_id(
     connection: &impl DatastoreConnection,
     key_path: &impl KeyPath,
 ) -> Result<DatastoreEntity, DatastorersError> {
-    let client = connection.get_client();
-    let projects = client.projects();
-
     let key = key_path.get_key();
-    let req = LookupRequest {
-        keys: Some(vec![key]),
-        read_options: Some(ReadOptions {
-            transaction: connection.get_transaction_id(),
-            read_consistency: None,
-        }),
-    };
-    let resp: LookupResponse = projects
-        .lookup(req, connection.get_project_name())
-        .execute()
-        .await?;
+    let resp: LookupResponse = raw_lookup(connection, vec![key]).await?;
 
     match resp.found {
         Some(mut found) => match found.len() {
@@ -353,6 +344,48 @@ async fn get_one_by_id(
         },
         None => Err(DatastoreClientError::NotFound.into()),
     }
+}
+
+async fn entity_lookup(
+    connection: &impl DatastoreConnection,
+    keys: Vec<Key>,
+) -> Result<Vec<DatastoreEntity>, DatastorersError> {
+    let resp: LookupResponse = raw_lookup(connection, keys).await?;
+
+    match resp.found {
+        Some(found) => {
+            let result = found
+                .into_iter()
+                .map(|e| {
+                    let result: DatastoreEntity = e.try_into()?;
+                    Ok(result)
+                })
+                .collect::<Result<Vec<DatastoreEntity>, DatastorersError>>()?;
+            Ok(result)
+        }
+        None => Err(DatastoreClientError::NotFound.into()),
+    }
+}
+
+async fn raw_lookup(
+    connection: &impl DatastoreConnection,
+    keys: Vec<Key>,
+) -> Result<LookupResponse, DatastorersError> {
+    let client = connection.get_client();
+    let projects = client.projects();
+
+    let req = LookupRequest {
+        keys: Some(keys),
+        read_options: Some(ReadOptions {
+            transaction: connection.get_transaction_id(),
+            read_consistency: None,
+        }),
+    };
+    let resp: LookupResponse = projects
+        .lookup(req, connection.get_project_name())
+        .execute()
+        .await?;
+    Ok(resp)
 }
 
 async fn query_one(

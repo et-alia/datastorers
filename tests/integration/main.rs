@@ -819,17 +819,52 @@ async fn test_query_by_id() -> Result<(), DatastorersError> {
     // Try fetch with a random id, to validate that not found check works
     let random_id = generate_random_id::<TestEntity>();
     assert_client_error(
-        TestEntity::query().by_id(&connection, &random_id).await,
+        TestEntity::query()
+            .lookup_one(&connection, &random_id)
+            .await,
         DatastoreClientError::NotFound,
     );
 
     // Success
     let inserted_id = &inserted.key;
-    let fetched_entity = TestEntity::query().by_id(&connection, inserted_id).await?;
+    let fetched_entity = TestEntity::query()
+        .lookup_one(&connection, inserted_id)
+        .await?;
 
     // Validate content of the fetched entity
     assert_eq!(&original_string, &fetched_entity.prop_string);
     assert_eq!(original_int, fetched_entity.prop_int);
+
+    Ok(())
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_query_multiple_by_id() -> Result<(), DatastorersError> {
+    let connection = create_test_connection().await;
+
+    // Insert an entity with some random values
+    let entity_a = generate_random_entity().commit(&connection).await?;
+    let entity_b = generate_random_entity().commit(&connection).await?;
+    let entity_c = generate_random_entity().commit(&connection).await?;
+
+    let lookup_res_string_props: Vec<String> = TestEntity::query()
+        .lookup(&connection, vec![&entity_a.key, &entity_c.key])
+        .await?
+        .into_iter()
+        .map(|e| e.prop_string)
+        .collect();
+
+    // Entity a + c shall be in the response, but not b
+    assert_eq!(lookup_res_string_props.len(), 2);
+    assert!(contains(&lookup_res_string_props, &entity_a.prop_string));
+    assert!(!contains(&lookup_res_string_props, &entity_b.prop_string));
+    assert!(contains(&lookup_res_string_props, &entity_c.prop_string));
+
+    // Delete created entities
+    entity_a.delete(&connection).await?;
+    entity_b.delete(&connection).await?;
+    entity_c.delete(&connection).await?;
 
     Ok(())
 }

@@ -250,7 +250,7 @@ pub fn datastore_managed(input: TokenStream) -> TokenStream {
             {
                 use datastorers::DatastorersQueryable;
 
-                let result = #name::query().by_id(connection, key_path).await?;
+                let result = #name::query().lookup_one(connection, key_path).await?;
                 return Ok(result)
             }
             #(
