@@ -30,30 +30,21 @@ where
         + TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
     fn query() -> DatastorersQuery<E>;
-
-    fn get_default_page_size() -> Option<i32>;
 }
 
 #[async_trait]
 impl<T> DatastorersQueryable<T> for T
 where
-    T: 'static + Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError> + Send + Sync,
+    T: Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError> + Send + Sync,
 {
     fn query() -> DatastorersQuery<T> {
         DatastorersQuery::default()
-    }
-
-    fn get_default_page_size() -> Option<i32> {
-        T::page_size()
     }
 }
 
 pub struct DatastorersQuery<E>
 where
-    E: Kind
-        + Pagable
-        + DatastorersQueryable<E>
-        + TryFrom<DatastoreEntity, Error = DatastorersError>,
+    E: Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
     entity: PhantomData<E>,
     filter: Option<DatastorersPropertyFilter>,
@@ -63,10 +54,7 @@ where
 
 impl<E> Default for DatastorersQuery<E>
 where
-    E: Kind
-        + Pagable
-        + DatastorersQueryable<E>
-        + TryFrom<DatastoreEntity, Error = DatastorersError>,
+    E: Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
     fn default() -> Self {
         DatastorersQuery {
@@ -80,10 +68,7 @@ where
 
 impl<E> DatastorersQuery<E>
 where
-    E: Kind
-        + Pagable
-        + DatastorersQueryable<E>
-        + TryFrom<DatastoreEntity, Error = DatastorersError>,
+    E: Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
     pub fn filter(
         mut self,
@@ -202,10 +187,7 @@ where
 
 impl<E> TryFrom<DatastorersQuery<E>> for Query
 where
-    E: Kind
-        + Pagable
-        + DatastorersQueryable<E>
-        + TryFrom<DatastoreEntity, Error = DatastorersError>,
+    E: Kind + Pagable + TryFrom<DatastoreEntity, Error = DatastorersError>,
 {
     type Error = DatastorersError;
 
@@ -225,7 +207,7 @@ where
             filter,
             limit: item
                 .limit
-                .or_else(|| E::get_default_page_size().or(Some(DEFAULT_PAGE_SIZE))),
+                .or_else(|| E::page_size().or(Some(DEFAULT_PAGE_SIZE))),
             order,
             ..Default::default()
         })
