@@ -1,6 +1,6 @@
 use crate::entity::Kind;
 use crate::error::DatastoreKeyError;
-use crate::DatastorersError;
+use crate::{DatastoreNameRepresentationError, DatastorersError};
 use google_datastore1::schemas;
 use google_datastore1::schemas::Key;
 use std::convert::TryFrom;
@@ -197,7 +197,7 @@ where
                     } else {
                         Err(DatastoreKeyError::WrongKind {
                             expected: T::kind_str(),
-                            found: kind.to_string(),
+                            found: std::string::ToString::to_string(&kind),
                         }
                         .into())
                     }
@@ -217,7 +217,20 @@ where
     }
 }
 
-/// This type is a name identifier in a key path
+/// Must be implemented by types that are used as [IdentifierName](IdentifierName) representations.
+pub trait SerializeIdentifierName {
+    fn to_string(&self) -> String;
+}
+
+/// Must be implemented by types that are used as [IdentifierName](IdentifierName) representations.
+pub trait DeserializeIdentifierName: Sized {
+    fn from_str(from: &str) -> Result<Self, DatastoreNameRepresentationError>;
+}
+
+/// This type is a name identifier in a key path, where the identifier is represented
+/// by a String. It is implemented as a type alias of [IdentifierName].
+/// See the documentation of [IdentifierName] for information on how
+/// to create your own Identifier representation.
 ///
 /// Example:
 /// ```
@@ -225,25 +238,50 @@ where
 /// #[derive(DatastoreManaged)]
 /// #[kind="my_entity"]
 /// struct MyEntity {
-///     /// A key path with no ancestors and an identifier name of type String
+///     /// A key path with no children and an identifier name of type String
 ///     #[key]
-///     key: IdentifierName<Self>,
+///     key: IdentifierString<Self>,
 /// }
 /// ```
+pub type IdentifierString<T, Child = IdentifierNone> = IdentifierName<T, String, Child>;
+
+impl SerializeIdentifierName for String {
+    fn to_string(&self) -> String {
+        self.clone()
+    }
+}
+
+impl DeserializeIdentifierName for String {
+    fn from_str(from: &str) -> Result<Self, DatastoreNameRepresentationError> {
+        Ok(from.to_string())
+    }
+}
+
+/// This is the type that acts as a Name Identifier, typically you
+/// won't use this type, but rather a type alias.
+///
+/// The simplest type alias is [IdentifierString](IdentifierString).
+/// You can easily create your own alias, e.g. `IdentifierUuid` if you want.
+/// Just implement [SerializeIdentifierName](SerializeIdentifierName) and
+/// [DeserializeIdentifierName](DeserializeIdentifierName) for your type,
+/// and derive/implement [PartialEq](PartialEq).
+/// Currently, `IdentifierUuid` isn't provided.
 #[derive(Clone, Debug)]
-pub struct IdentifierName<T, Child = IdentifierNone>
+pub struct IdentifierName<T, Representation, Child = IdentifierNone>
 where
     T: Kind,
+    Representation: SerializeIdentifierName + DeserializeIdentifierName + PartialEq,
     Child: KeyPathElement + PartialEq,
 {
-    pub name: Option<String>,
+    pub name: Option<Representation>,
     pub child: Box<Child>,
     phantom_kind: PhantomData<T>,
 }
 
-impl<T, Child> PartialEq for IdentifierName<T, Child>
+impl<T, Representation, Child> PartialEq for IdentifierName<T, Representation, Child>
 where
     T: Kind,
+    Representation: SerializeIdentifierName + DeserializeIdentifierName + PartialEq,
     Child: KeyPathElement + PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
@@ -251,9 +289,10 @@ where
     }
 }
 
-impl<T, Child> TryFrom<schemas::Key> for IdentifierName<T, Child>
+impl<T, Representation, Child> TryFrom<schemas::Key> for IdentifierName<T, Representation, Child>
 where
     T: Kind,
+    Representation: SerializeIdentifierName + DeserializeIdentifierName + PartialEq,
     Child: KeyPathElement + PartialEq,
 {
     type Error = DatastorersError;
@@ -270,12 +309,13 @@ where
     }
 }
 
-impl<T, Child> IdentifierName<T, Child>
+impl<T, Representation, Child> IdentifierName<T, Representation, Child>
 where
     T: Kind,
+    Representation: SerializeIdentifierName + DeserializeIdentifierName + PartialEq,
     Child: KeyPathElement + PartialEq,
 {
-    pub fn name(name: Option<String>, child: Child) -> Self {
+    pub fn name(name: Option<Representation>, child: Child) -> Self {
         Self {
             name,
             child: Box::new(child),
@@ -284,14 +324,15 @@ where
     }
 }
 
-impl<T, Child> KeyPathElement for IdentifierName<T, Child>
+impl<T, Representation, Child> KeyPathElement for IdentifierName<T, Representation, Child>
 where
     T: Kind,
+    Representation: SerializeIdentifierName + DeserializeIdentifierName + PartialEq,
     Child: KeyPathElement + PartialEq,
 {
     fn identifier(&self) -> Identifier {
         match &self.name {
-            Some(name) => Identifier::Name(name.clone()),
+            Some(name) => Identifier::Name(name.to_string()),
             None => Identifier::None,
         }
     }
@@ -306,7 +347,7 @@ where
                 Some(name) => path.push(schemas::PathElement {
                     id: None,
                     kind: Some(self.kind().to_string()),
-                    name: Some(name.clone()),
+                    name: Some(name.to_string()),
                 }),
                 None => path.push(schemas::PathElement {
                     id: None,
@@ -331,7 +372,8 @@ where
                         if let Some(name) = path_element.name.as_ref() {
                             let child =
                                 Child::from_path_elements(path_elements, index + 1, path_length)?;
-                            Ok(IdentifierName::name(Some(name.clone()), child))
+                            let representation = Representation::from_str(&name)?;
+                            Ok(IdentifierName::name(Some(representation), child))
                         } else if index == 0 {
                             let child =
                                 Child::from_path_elements(path_elements, index + 1, path_length)?;
@@ -342,7 +384,7 @@ where
                     } else {
                         Err(DatastoreKeyError::WrongKind {
                             expected: T::kind_str(),
-                            found: kind.to_string(),
+                            found: std::string::ToString::to_string(&kind),
                         }
                         .into())
                     }
@@ -472,6 +514,8 @@ macro_rules! id {
 /// A macro for simplifying the creation of a chain of [IdentifierId](IdentifierId),
 /// [IdentifierName](IdentifierName), or [IdentifierNone](IdentifierNone) structs.
 ///
+/// Type aliased identifiers are allowed, e.g. [IdentifierString](IdentifierString).
+///
 /// For example, writing:
 /// ```
 /// # use datastorers::*;
@@ -479,9 +523,9 @@ macro_rules! id {
 /// # #[kind="my_entity"]
 /// # struct MyEntity {
 /// #     #[key]
-/// #     key: IdentifierName<Self>,
+/// #     key: IdentifierString<Self>,
 /// # }
-/// let key: IdentifierName<MyEntity> = name!["name"];
+/// let key: IdentifierString<MyEntity> = name!["name"];
 /// ```
 /// is much easier than writing:
 /// ```
@@ -490,9 +534,9 @@ macro_rules! id {
 /// # #[kind="my_entity"]
 /// # struct MyEntity {
 /// #     #[key]
-/// #     key: IdentifierName<Self>,
+/// #     key: IdentifierString<Self>,
 /// # }
-/// let key: IdentifierName<MyEntity> = IdentifierName::name(Some("name".to_string()), IdentifierNone::none());
+/// let key: IdentifierString<MyEntity> = IdentifierString::name(Some("name".to_string()), IdentifierNone::none());
 /// ```
 ///
 /// See also [id!](id).
@@ -503,23 +547,25 @@ macro_rules! name {
         datastorers::IdentifierName::name(None, $($tail)*)
     };
     // something like name!["name", id![....
+    // This case currently only supports Representation
     ($lit: literal, $($tail:tt)*) => {
         datastorers::IdentifierName::name(Some($lit.to_string()), $($tail)*)
     };
     // something like name![name, id![....
     ($e: expr, $($tail:tt)*) => {
-        datastorers::IdentifierName::name(Some($e.to_string()), $($tail)*)
+        datastorers::IdentifierName::name(Some($e.clone()), $($tail)*)
     };
     // something like name![None]
     (None) => {
         datastorers::IdentifierName::name(None, datastorers::IdentifierNone::none())
     };
     // something like name!["name"]
+    // This case currently only supports Representation
     ($lit: literal) => {
         datastorers::IdentifierName::name(Some($lit.to_string()), datastorers::IdentifierNone::none())
     };
     // something like name![name]
     ($e: expr) => {
-        datastorers::IdentifierName::name(Some($e.to_string()), datastorers::IdentifierNone::none())
+        datastorers::IdentifierName::name(Some($e.clone()), datastorers::IdentifierNone::none())
     };
 }

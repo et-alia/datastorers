@@ -1,7 +1,8 @@
 #![recursion_limit = "128"]
 #![allow(clippy::single_match)]
-
-extern crate proc_macro;
+#![warn(rust_2018_idioms)]
+#![warn(unused)]
+#![warn(rustdoc)]
 
 use proc_macro::TokenStream;
 use quote::quote;
