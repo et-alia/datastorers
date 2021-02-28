@@ -23,7 +23,7 @@ impl AsRef<[u8]> for Bytes {
 }
 
 impl fmt::Display for Bytes {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         ::radix64::Display::new(BASE64_CFG, &self.0).fmt(f)
     }
 }

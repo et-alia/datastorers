@@ -62,6 +62,12 @@ pub enum DatastoreKeyError {
     ExpectedName,
 }
 
+#[derive(Error, Debug, PartialEq)]
+pub enum DatastoreNameRepresentationError {
+    #[error("Could not parse representation from given &str")]
+    ParseStrError,
+}
+
 #[derive(Error, Debug)]
 pub enum DatastorersError {
     #[error(transparent)]
@@ -76,4 +82,6 @@ pub enum DatastorersError {
     DatastoreDeserializeError(#[from] DatastoreDeserializeError),
     #[error(transparent)]
     DatastoreKeyError(#[from] DatastoreKeyError),
+    #[error(transparent)]
+    DatastoreNameRepresentationError(#[from] DatastoreNameRepresentationError),
 }

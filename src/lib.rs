@@ -1,4 +1,7 @@
 #![allow(clippy::single_match)]
+#![warn(rust_2018_idioms)]
+#![warn(unused)]
+#![warn(rustdoc)]
 
 pub use crate::connection::DatastoreConnection;
 pub use crate::entity::{

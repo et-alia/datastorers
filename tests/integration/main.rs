@@ -5,7 +5,7 @@ use datastorers::transaction::TransactionConnection;
 use datastorers::DatastorersUpdatable;
 use datastorers::{
     id, name, DatastoreClientError, DatastoreManaged, DatastoreParseError, DatastorersError,
-    DatastorersQueryable, IdentifierId, IdentifierName, IdentifierNone, Kind, Operator, Order,
+    DatastorersQueryable, IdentifierId, IdentifierNone, IdentifierString, Kind, Operator, Order,
 };
 
 use crate::connection::create_test_connection;
@@ -63,7 +63,7 @@ pub struct TestEntityOptional {
 #[kind = "TestNameKey"]
 pub struct TestEntityName {
     #[key]
-    pub key: IdentifierName<Self>,
+    pub key: IdentifierString<Self>,
 
     pub prop_string: String,
 }

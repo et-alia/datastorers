@@ -1,6 +1,8 @@
 use datastorers::{
-    id, name, DatastoreEntity, DatastoreKeyError, DatastoreManaged, DatastoreProperties,
-    DatastorersError, IdentifierId, IdentifierName, IdentifierNone, KeyPath, KeyPathElement, Kind,
+    id, name, DatastoreEntity, DatastoreKeyError, DatastoreManaged,
+    DatastoreNameRepresentationError, DatastoreProperties, DatastorersError,
+    DeserializeIdentifierName, IdentifierId, IdentifierName, IdentifierNone, IdentifierString,
+    KeyPath, KeyPathElement, Kind, SerializeIdentifierName,
 };
 use google_datastore1::schemas::{Key, PathElement};
 use std::convert::TryInto;
@@ -66,7 +68,8 @@ fn test_identifier_id() {
 
 #[test]
 fn test_identifier_name() {
-    let identifier = IdentifierName::<KindB>::name(Some("xyz".to_string()), IdentifierNone::none());
+    let identifier =
+        IdentifierString::<KindB>::name(Some("xyz".to_string()), IdentifierNone::none());
     let key = identifier.get_key();
     let key_path = key.path.unwrap();
     assert_eq!(1, key_path.len());
@@ -76,9 +79,9 @@ fn test_identifier_name() {
 
 #[test]
 fn test_identifier_id_then_name() {
-    let identifier: IdentifierId<KindA, IdentifierName<KindB>> = IdentifierId::id(
+    let identifier: IdentifierId<KindA, IdentifierString<KindB>> = IdentifierId::id(
         Some(92874),
-        IdentifierName::name(Some("bla".to_string()), IdentifierNone::none()),
+        IdentifierString::name(Some("bla".to_string()), IdentifierNone::none()),
     );
     let key = identifier.get_key();
     let key_path = key.path.unwrap();
@@ -91,12 +94,12 @@ fn test_identifier_id_then_name() {
 
 #[test]
 fn test_identifier_name_then_id_then_name() {
-    let identifier: IdentifierName<KindA, IdentifierId<KindB, IdentifierName<KindC>>> =
-        IdentifierName::name(
+    let identifier: IdentifierString<KindA, IdentifierId<KindB, IdentifierString<KindC>>> =
+        IdentifierString::name(
             Some("foo".to_string()),
             IdentifierId::id(
                 Some(543),
-                IdentifierName::name(Some("bla".to_string()), IdentifierNone::none()),
+                IdentifierString::name(Some("bla".to_string()), IdentifierNone::none()),
             ),
         );
     let key = identifier.get_key();
@@ -128,7 +131,7 @@ fn deserialize_from_valid_incomplete_key() -> Result<(), DatastorersError> {
         ]),
     };
 
-    let identifier: IdentifierName<KindA, IdentifierId<KindB>> = key.try_into()?;
+    let identifier: IdentifierString<KindA, IdentifierId<KindB>> = key.try_into()?;
 
     assert_eq!("a", identifier.kind());
     assert_eq!(Some("ancestor".to_string()), identifier.name);
@@ -156,7 +159,7 @@ fn deserialize_from_invalid_key_without_name() {
         ]),
     };
 
-    let identifier: Result<IdentifierId<KindA, IdentifierName<KindB>>, DatastorersError> =
+    let identifier: Result<IdentifierId<KindA, IdentifierString<KindB>>, DatastorersError> =
         key.try_into();
 
     let error = get_key_path_error(identifier);
@@ -334,40 +337,111 @@ fn test_id_macro_variable() {
 
 #[test]
 fn test_name_macro() {
-    let identifier: IdentifierName<KindB> = name!["name"];
+    let identifier: IdentifierString<KindB> = name!["name"];
     assert_eq!("name", identifier.name.unwrap());
 }
 
 #[test]
 fn test_name_macro_none() {
-    let identifier: IdentifierName<KindB> = name![None];
+    let identifier: IdentifierString<KindB> = name![None];
     assert_eq!(None, identifier.name);
 }
 
 #[test]
 fn test_name_macro_variable() {
     let s = "thing".to_string();
-    let identifier: IdentifierName<KindB> = name![s];
+    let identifier: IdentifierString<KindB> = name![s];
     assert_eq!(s, identifier.name.unwrap());
 }
 
 #[test]
 fn test_id_macro_name_macro() {
-    let identifier: IdentifierId<KindA, IdentifierName<KindB>> = id![2001, name!["thing"]];
+    let identifier: IdentifierId<KindA, IdentifierString<KindB>> = id![2001, name!["thing"]];
     assert_eq!(2001, identifier.id.unwrap());
     assert_eq!("thing", identifier.child.name.unwrap());
 }
 
 #[test]
 fn test_id_macro_none_name_macro() {
-    let identifier: IdentifierId<KindA, IdentifierName<KindB>> = id![None, name!["thing"]];
+    let identifier: IdentifierId<KindA, IdentifierString<KindB>> = id![None, name!["thing"]];
     assert_eq!(None, identifier.id);
     assert_eq!("thing", identifier.child.name.unwrap());
 }
 
 #[test]
 fn test_name_macro_none_name_macro() {
-    let identifier: IdentifierName<KindA, IdentifierName<KindB>> = name![None, name!["thing"]];
+    let identifier: IdentifierString<KindA, IdentifierString<KindB>> = name![None, name!["thing"]];
     assert_eq!(None, identifier.name);
     assert_eq!("thing", identifier.child.name.unwrap());
+}
+
+#[test]
+fn test_name_macro_with_representation() {
+    #[derive(Clone, PartialEq)]
+    struct Repr {
+        x: i32,
+    }
+
+    impl SerializeIdentifierName for Repr {
+        fn to_string(&self) -> String {
+            format!("{}", self.x)
+        }
+    }
+
+    impl DeserializeIdentifierName for Repr {
+        fn from_str(from: &str) -> Result<Self, DatastoreNameRepresentationError> {
+            Ok(Repr {
+                x: from.parse::<i32>().unwrap(),
+            })
+        }
+    }
+
+    type IdentifierRepr<T, Child = IdentifierNone> = IdentifierName<T, Repr, Child>;
+
+    let identifier: IdentifierRepr<KindA, IdentifierNone> = name![Repr { x: 5 }];
+    assert!(Repr { x: 5 } == identifier.name.unwrap());
+}
+
+#[test]
+fn test_key_deserialization_with_representation() -> Result<(), DatastorersError> {
+    #[derive(Clone, PartialEq)]
+    struct Repr {
+        y: String,
+    }
+
+    impl SerializeIdentifierName for Repr {
+        fn to_string(&self) -> String {
+            self.y.clone()
+        }
+    }
+
+    impl DeserializeIdentifierName for Repr {
+        fn from_str(from: &str) -> Result<Self, DatastoreNameRepresentationError> {
+            Ok(Repr {
+                y: from.to_string(),
+            })
+        }
+    }
+
+    type IdentifierRepr<T, Child = IdentifierNone> = IdentifierName<T, Repr, Child>;
+
+    let key = Key {
+        partition_id: None,
+        path: Some(vec![PathElement {
+            id: None,
+            kind: Some("a".to_string()),
+            name: Some("test_value".to_string()),
+        }]),
+    };
+
+    let identifier: IdentifierRepr<KindA, IdentifierNone> = key.try_into()?;
+
+    assert_eq!("a", identifier.kind());
+    assert!(
+        Repr {
+            y: "test_value".to_string()
+        } == identifier.name.unwrap()
+    );
+
+    Ok(())
 }
