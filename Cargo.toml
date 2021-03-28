@@ -14,8 +14,8 @@ radix64 = "0.6.2"
 
 [dev-dependencies]
 google_api_auth = { git = "https://github.com/bes/generator", branch = "refactor/async" }
-gcp_auth = "0.3.2"
-tokio = { version = "0.2.21", features = ["full"] }
+gcp_auth = "0.4.0"
+tokio = { version = "1.4.0", features = ["full"] }
 rand = "0.7.3"
 float-cmp = "0.8.0"
 
