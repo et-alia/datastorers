@@ -1,6 +1,9 @@
 use google_datastore1::Client;
 
-pub trait DatastoreConnection {
+pub trait DatastoreConnection
+where
+    Self: Send + Sync,
+{
     fn get_client(&self) -> &Client;
     fn get_project_name(&self) -> String;
 
